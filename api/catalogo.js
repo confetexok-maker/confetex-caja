@@ -1,4 +1,4 @@
-import { q, one } from '../lib/db.js';
+import { actualizarConfig } from '../lib/db.js';
 import { json, body, protegido, falla, hashPin, pinValido, pinOk, claveAltaOk } from '../lib/util.js';
 
 const TIPOS_CUENTA = ['billetera', 'banco', 'efectivo', 'tarjeta'];
@@ -59,46 +59,59 @@ export const POST = protegido(async (request, yo) => {
   const t = TABLAS[b.tabla];
   if (!t || !b.item) throw falla('Pedido inválido.');
   const c = t.campos(b.item);
-  const keys = Object.keys(c);
-  const vals = keys.map((k) => c[k]);
-  let row;
-  if (b.item.id) {
-    row = await one(
-      `UPDATE ${b.tabla} SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1} RETURNING id`,
-      [...vals, +b.item.id],
-    );
-    if (!row) throw falla('No se encontró el registro.', 404);
-  } else {
-    row = await one(
-      `INSERT INTO ${b.tabla} (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
-      vals,
-    );
-  }
-  return json({ ok: true, id: row.id });
+  const id = await actualizarConfig((cfg) => {
+    const lista = cfg[b.tabla];
+    const otro = lista.find((x) => x.nombre.toLowerCase() === c.nombre.toLowerCase() && x.id !== +b.item.id);
+    if (otro) throw falla('Ya existe un registro con ese nombre.', 409);
+    if (b.tabla === 'recurrentes') {
+      if (c.categoria_id && !cfg.categorias.some((x) => x.id === c.categoria_id)) throw falla('Categoría inválida.');
+      if (c.cuenta_destino_id && !cfg.cuentas.some((x) => x.id === c.cuenta_destino_id)) throw falla('Cuenta inválida.');
+    }
+    if (b.item.id) {
+      const x = lista.find((y) => y.id === +b.item.id);
+      if (!x) throw falla('No se encontró el registro.', 404);
+      Object.assign(x, c);
+      return x.id;
+    }
+    cfg.seq[b.tabla] = (cfg.seq[b.tabla] || Math.max(0, ...lista.map((x) => x.id))) + 1;
+    lista.push({ id: cfg.seq[b.tabla], ...c });
+    return cfg.seq[b.tabla];
+  });
+  return json({ ok: true, id });
 });
+
+const usuarioCfg = (cfg, id) => { const u = cfg.usuarios.find((x) => x.id === +id); if (!u) throw falla('Usuario inválido.', 404); return u; };
 
 async function usuarios(b, yo) {
   if (b.accion === 'cambiarPin') {
-    const u = await one(`SELECT pin_hash FROM usuarios WHERE id = $1`, [yo.id]);
-    if (!pinOk(b.actual, u && u.pin_hash)) throw falla('El PIN actual no es correcto.', 401);
     if (!pinValido(b.nuevo)) throw falla('El PIN nuevo tiene que tener entre 4 y 8 números.');
-    await q(`UPDATE usuarios SET pin_hash = $1 WHERE id = $2`, [hashPin(b.nuevo), yo.id]);
+    const hash = hashPin(b.nuevo);
+    await actualizarConfig((cfg) => {
+      const u = usuarioCfg(cfg, yo.id);
+      if (!pinOk(b.actual, u.pin_hash)) throw falla('El PIN actual no es correcto.', 401);
+      u.pin_hash = hash;
+    });
     return json({ ok: true });
   }
   if (b.accion === 'resetearPin') {
     if (!claveAltaOk(b.claveAlta)) throw falla('La clave de alta no es correcta.', 401);
-    await q(`UPDATE usuarios SET pin_hash = NULL WHERE id = $1`, [+b.id || 0]);
+    await actualizarConfig((cfg) => { usuarioCfg(cfg, b.id).pin_hash = null; });
     return json({ ok: true });
   }
   if (b.accion === 'agregar') {
     const nombre = texto(b.nombre, 40);
     if (!nombre) throw falla('Escribí el nombre.');
-    const r = await one(`INSERT INTO usuarios (nombre) VALUES ($1) RETURNING id`, [nombre]);
-    return json({ ok: true, id: r.id });
+    const id = await actualizarConfig((cfg) => {
+      if (cfg.usuarios.some((x) => x.nombre.toLowerCase() === nombre.toLowerCase())) throw falla('Ya existe un usuario con ese nombre.', 409);
+      cfg.seq.usuarios = (cfg.seq.usuarios || cfg.usuarios.length) + 1;
+      cfg.usuarios.push({ id: cfg.seq.usuarios, nombre, pin_hash: null, activo: true });
+      return cfg.seq.usuarios;
+    });
+    return json({ ok: true, id });
   }
   if (b.accion === 'activo') {
     if (+b.id === yo.id) throw falla('No podés desactivar tu propio usuario.');
-    await q(`UPDATE usuarios SET activo = $1 WHERE id = $2`, [bool(b.activo), +b.id || 0]);
+    await actualizarConfig((cfg) => { usuarioCfg(cfg, b.id).activo = bool(b.activo); });
     return json({ ok: true });
   }
   throw falla('Acción inválida.');

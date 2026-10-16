@@ -1,25 +1,16 @@
-// Servidor local para probar la app sin Vercel: base en memoria (PGlite) y pedidos de ejemplo.
+// Servidor local para probar la app sin Vercel: datos en memoria y pedidos de ejemplo.
 // Uso: node scripts/dev.mjs  →  http://localhost:3000   (clave de alta: "prueba")
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PGlite } from '@electric-sql/pglite';
-import { setRunner } from '../lib/db.js';
+import { usarMemoria } from '../lib/store.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 process.env.CLAVE_ALTA ||= 'prueba';
 process.env.PEDIDOS_MOCK ||= join(root, 'scripts', 'pedidos-ejemplo.json');
 
-const pg = new PGlite();
-setRunner(async (text, params) => {
-  try {
-    return (await pg.query(text, params)).rows;
-  } catch (e) {
-    if (e && e.code) throw e;
-    throw e;
-  }
-});
+usarMemoria();
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
 

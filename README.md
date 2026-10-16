@@ -5,15 +5,16 @@ Caja diaria de ConfeTex: ingresos, egresos y transferencias por cuenta, proveedo
 ## Cómo está armada
 - `index.html`: toda la interfaz (sin build).
 - `api/`: funciones de Vercel (login, datos, movimientos, catálogos, pedidos).
-- `lib/db.js`: base Postgres (Neon). Crea las tablas solas la primera vez y carga categorías, cuentas, proveedores, vencimientos y los movimientos del 1 al 15/10/2026 de la planilla (`lib/octubre-2026.json`).
+- `lib/db.js` + `lib/store.js`: datos en un Vercel Blob privado (store `confetex-caja-datos`): `caja/config.json` (usuarios, cuentas, categorías, proveedores, vencimientos) y un archivo por mes en `caja/movs/AAAA-MM.json`. Cada escritura usa control de versiones para que dos personas no se pisen. La primera vez carga los datos iniciales y los movimientos del 1 al 15/10/2026 de la planilla (`lib/octubre-2026.json`).
 - `lib/pedidos.js`: lee **solo la información financiera** (total, pagos, saldo) de la app de pedidos.
 
-## Puesta en marcha en Vercel (una sola vez)
-1. **Proyecto**: Vercel → Add New → Project → importar `confetex-caja` → Deploy (Framework: Other).
-2. **Base de datos**: en el proyecto → Storage → Create Database → **Neon** (plan gratis) → conectarla a `confetex-caja`. Esto crea la variable `DATABASE_URL`.
-3. **Clave de alta**: Settings → Environment Variables → `CLAVE_ALTA` = una clave que elijas. Se pide solo la primera vez que cada usuario elige su PIN (o al resetearlo).
-4. **Pedidos**: Storage → Blob store `confetex-pedidos-datos` → Connect Project → `confetex-caja` con prefijo **`PEDIDOS`** (crea `PEDIDOS_READ_WRITE_TOKEN`). La caja solo lee.
-5. Deployments → Redeploy.
+## Variables de entorno (Vercel)
+- `BLOB_READ_WRITE_TOKEN`: lo crea Vercel al conectar el store `confetex-caja-datos`.
+- `CLAVE_ALTA`: clave que se pide solo la primera vez que cada usuario elige su PIN (o al resetearlo).
+- `PEDIDOS_READ_WRITE_TOKEN`: token del store de la app de pedidos (solo se usa para leer).
+
+## Deploy
+Cada push a `main` se publica automáticamente en Vercel (proyecto `confetex-caja`).
 
 ## Uso
 - Usuarios: Nicolas y Noely. Cada uno elige su PIN la primera vez (con la clave de alta). Cada movimiento guarda quién lo cargó y quién lo editó o borró.
@@ -27,4 +28,4 @@ Caja diaria de ConfeTex: ingresos, egresos y transferencias por cuenta, proveedo
 npm install
 node scripts/dev.mjs   # http://localhost:3000 · clave de alta: prueba
 ```
-Usa una base en memoria y pedidos de ejemplo (`scripts/pedidos-ejemplo.json`).
+Usa datos en memoria y pedidos de ejemplo (`scripts/pedidos-ejemplo.json`).

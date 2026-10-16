@@ -1,29 +1,24 @@
-import { q, INICIO } from '../lib/db.js';
+import { leerConfig, movimientos, INICIO } from '../lib/db.js';
 import { json, protegido } from '../lib/util.js';
 import { pedidosToken } from '../lib/pedidos.js';
 
 export const GET = protegido(async (request, yo) => {
-  const [usuarios, cuentas, categorias, proveedores, recurrentes, saldos] = await Promise.all([
-    q(`SELECT id, nombre, activo, (pin_hash IS NOT NULL) AS "tienePin" FROM usuarios ORDER BY id`),
-    q(`SELECT id, nombre, tipo, orden, activa FROM cuentas ORDER BY orden, id`),
-    q(`SELECT id, nombre, tipo, orden, activa FROM categorias ORDER BY orden, id`),
-    q(`SELECT id, nombre, rubro, telefono, notas, activo FROM proveedores ORDER BY lower(nombre)`),
-    q(`SELECT id, nombre, tipo, categoria_id, proveedor_id, cuenta_id, cuenta_destino_id, monto::float8 AS monto, dia, activo
-       FROM recurrentes ORDER BY dia, id`),
-    q(`SELECT c.id,
-         COALESCE(SUM(CASE WHEN m.tipo = 'ingreso' AND m.cuenta_id = c.id THEN m.monto
-                           WHEN m.tipo = 'egreso' AND m.cuenta_id = c.id THEN -m.monto
-                           WHEN m.tipo = 'transferencia' AND m.cuenta_id = c.id THEN -m.monto
-                           WHEN m.tipo = 'transferencia' AND m.cuenta_destino_id = c.id THEN m.monto
-                           ELSE 0 END), 0)::float8 AS saldo
-       FROM cuentas c
-       LEFT JOIN movimientos m ON m.borrado_en IS NULL AND (m.cuenta_id = c.id OR m.cuenta_destino_id = c.id)
-       GROUP BY c.id`),
-  ]);
-  const s = Object.fromEntries(saldos.map((r) => [r.id, r.saldo]));
-  for (const c of cuentas) c.saldo = s[c.id] || 0;
+  const [c, movs] = await Promise.all([leerConfig(), movimientos()]);
+  const saldo = {};
+  for (const m of movs) {
+    if (m.tipo === 'ingreso') saldo[m.cuenta_id] = (saldo[m.cuenta_id] || 0) + m.monto;
+    else saldo[m.cuenta_id] = (saldo[m.cuenta_id] || 0) - m.monto;
+    if (m.tipo === 'transferencia') saldo[m.cuenta_destino_id] = (saldo[m.cuenta_destino_id] || 0) + m.monto;
+  }
+  const r2 = (n) => Math.round((n || 0) * 100) / 100;
+  const orden = (a, b) => (a.orden - b.orden) || (a.id - b.id);
   return json({
-    yo, inicio: INICIO, usuarios, cuentas, categorias, proveedores, recurrentes,
+    yo, inicio: INICIO,
+    usuarios: c.usuarios.map((u) => ({ id: u.id, nombre: u.nombre, activo: u.activo, tienePin: Boolean(u.pin_hash) })),
+    cuentas: [...c.cuentas].sort(orden).map((x) => ({ ...x, saldo: r2(saldo[x.id]) })),
+    categorias: [...c.categorias].sort(orden),
+    proveedores: [...c.proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    recurrentes: [...c.recurrentes].sort((a, b) => (a.dia - b.dia) || (a.id - b.id)),
     pedidosConectado: Boolean(pedidosToken() || process.env.PEDIDOS_MOCK),
   });
 });
