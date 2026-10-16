@@ -1,0 +1,14 @@
+[
+ {"id":"261005-CIRO","codigoCliente":"C26067","empresa":"CIRO","contacto":"Ciro","estado":"Costura","fechaIngreso":"2026-10-05",
+  "items":[{"producto":"Chomba","cantidad":"50","precioUnit":"24000","descuento":"","talles":{}}],
+  "pagos":[{"fecha":"2026-10-05","medio":"Mercado Pago","monto":"840000","nota":"seña"}]},
+ {"id":"260923-MAXI","codigoCliente":"C23001","empresa":"maximum","contacto":"","estado":"Listo para entregar","fechaIngreso":"2026-09-23",
+  "items":[{"producto":"Bermuda","cantidad":"60","precioUnit":"23500","talles":{}}],
+  "pagos":[{"fecha":"2026-09-23","medio":"Transferencia","monto":"459000","nota":"seña"}]},
+ {"id":"261012-COLO","codigoCliente":"C26070","empresa":"Colon","contacto":"","estado":"Corte","fechaIngreso":"2026-10-12",
+  "items":[{"producto":"Remera","cantidad":"","precioUnit":"9000","talles":{"S":"20","M":"40","L":"20"}}],
+  "pagos":[{"fecha":"2026-10-12","medio":"Mercado Pago","monto":"250000","nota":"seña"},{"fecha":"2026-10-16","medio":"Efectivo","monto":"100000","nota":"segundo pago"}]},
+ {"id":"260918-EZEQ","codigoCliente":"C26000","empresa":"","contacto":"ezequiel","estado":"Entregado","fechaIngreso":"2026-09-18",
+  "items":[{"producto":"Chomba","cantidad":"30","precioUnit":"14400","talles":{}}],
+  "pagos":[{"fecha":"2026-09-18","medio":"Mercado Pago","monto":"300000","nota":""}]}
+]
