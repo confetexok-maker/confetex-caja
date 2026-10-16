@@ -695,12 +695,21 @@ function nuevoMov(tipo, base = {}) {
   const mp = S.D.cuentas.find((c) => c.activa && c.tipo === 'billetera') || S.D.cuentas[0];
   return { tipo, fecha: hoy(), monto: '', cuenta_id: mp ? mp.id : '', cuenta_destino_id: '', categoria_id: '', proveedor: '', canal: '', detalle: '', facturado: false, envio: '', comision: '', ...base };
 }
-function optCategorias(tipo, sel) {
+function optCategorias(tipo, sel, conNueva) {
   const orden = tipo === 'ingreso' ? ['ingreso', 'financiero', 'ganancia', 'revisar', 'variable', 'fijo'] : ['variable', 'fijo', 'ganancia', 'financiero', 'revisar', 'ingreso'];
   return '<option value="">Elegí…</option>' + orden.map((t) => {
     const cs = S.D.categorias.filter((c) => c.tipo === t && (c.activa || c.id === +sel));
     return cs.length ? `<optgroup label="${TIPO_CAT[t]}">${cs.map((c) => `<option value="${c.id}"${c.id === +sel ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup>` : '';
-  }).join('');
+  }).join('') + (conNueva ? '<option value="__nueva">+ Nueva categoría…</option>' : '');
+}
+/** Detalles ya usados en una categoría (los más frecuentes primero), para sugerir al escribir. */
+function detallesUsados(categoriaId, tipo) {
+  const n = {};
+  for (const x of S.movs) {
+    if (x.tipo !== tipo || (categoriaId && x.categoria_id !== +categoriaId) || !x.detalle) continue;
+    const d = x.detalle.trim(); n[d] = (n[d] || 0) + 1;
+  }
+  return Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, 40).map((e) => e[0]);
 }
 function optCuentas(sel, excluir) {
   return '<option value="">Elegí…</option>' + S.D.cuentas.filter((c) => (c.activa || c.id === +sel) && c.id !== +excluir).map((c) => `<option value="${c.id}"${c.id === +sel ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('');
@@ -719,11 +728,15 @@ function mMov(m) {
       <label class="f"><span>Monto ($)</span><input name="monto" inputmode="decimal" value="${esc(v.monto)}" placeholder="0" required autofocus></label>
       <label class="f${t === 'transferencia' ? '' : ' full'}"><span>${t === 'transferencia' ? 'Desde' : t === 'ingreso' ? 'Entra en la cuenta' : 'Sale de la cuenta'}</span><select name="cuenta_id" required>${optCuentas(v.cuenta_id)}</select></label>
       ${t === 'transferencia' ? `<label class="f"><span>Hacia</span><select name="cuenta_destino_id" required>${optCuentas(v.cuenta_destino_id, v.cuenta_id)}</select></label>`
-      : `<label class="f full"><span>Categoría</span><select name="categoria_id" required>${optCategorias(t, v.categoria_id)}</select></label>`}
+      : v.nuevaCat ? `<div class="extra full"><p>Nueva categoría</p><div class="fgrid">
+          <label class="f"><span>Nombre</span><input name="nc_nombre" value="${esc(v.nuevaCat.nombre)}" placeholder="Ej: Fotografía" data-autofocus></label>
+          <label class="f"><span>Grupo</span><select name="nc_tipo">${Object.entries(TIPO_CAT).map(([k, l]) => `<option value="${k}"${v.nuevaCat.tipo === k ? ' selected' : ''}>${l.split(' (')[0]}</option>`).join('')}</select></label></div>
+          <div class="actions" style="margin-top:10px"><span class="sp"></span><button type="button" class="btn sm" data-action="cancelarCatInline">Cancelar</button><button type="button" class="btn sm primary" data-action="crearCatInline">Crear categoría</button></div></div>`
+        : `<label class="f full"><span>Categoría</span><select name="categoria_id" required>${optCategorias(t, v.categoria_id, true)}</select></label>`}
       ${t === 'egreso' ? `<label class="f full"><span>Proveedor (opcional)</span><input name="proveedor" list="dl-prov" value="${esc(v.proveedor)}" placeholder="Ej: Ruth"><datalist id="dl-prov">${S.D.proveedores.filter((p) => p.activo).map((p) => `<option value="${esc(p.nombre)}">${esc(p.rubro)}</option>`).join('')}</datalist></label>` : ''}
       ${t === 'ingreso' ? `<label class="f"><span>Canal</span><select name="canal"><option value="">—</option>${CANALES.map((c) => `<option${v.canal === c ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
         <label class="f" style="justify-content:flex-end"><span class="check" style="height:40px"><input type="checkbox" name="facturado"${v.facturado ? ' checked' : ''}> Facturado</span></label>` : ''}
-      <label class="f full"><span>Detalle</span><input name="detalle" value="${esc(v.detalle)}" placeholder="${t === 'ingreso' ? 'Ej: Seña Grupo Sur' : t === 'egreso' ? 'Ej: Costura 50 remeras' : 'Ej: Pago resumen Visa'}"></label>
+      <label class="f full"><span>Detalle <span class="mut" style="font-weight:400">· elegí uno usado o escribí uno nuevo</span></span><input name="detalle" list="dl-det" value="${esc(v.detalle)}" placeholder="${t === 'ingreso' ? 'Ej: Seña Grupo Sur' : t === 'egreso' ? 'Ej: Costura 50 remeras' : 'Ej: Pago resumen Visa'}"><datalist id="dl-det">${detallesUsados(v.categoria_id, t).map((d) => `<option value="${esc(d)}">`).join('')}</datalist></label>
     </div>
     ${t === 'ingreso' && !editando ? `<div class="extra" style="margin-top:12px"><p>Opcional: en la misma carga, el envío que pagó el cliente y la comisión de Mercado Pago.</p><div class="fgrid">
       <label class="f"><span>Envío cobrado ($)</span><input name="envio" inputmode="decimal" value="${esc(v.envio)}" placeholder="0"></label>
@@ -739,6 +752,7 @@ function leerMovForm() {
   const v = S.modal.v;
   for (const el of f.elements) {
     if (!el.name || el.name === 'otro') continue;
+    if (el.name.startsWith('nc_')) { if (v.nuevaCat) v.nuevaCat[el.name.slice(3)] = el.value; continue; }
     v[el.name] = el.type === 'checkbox' ? el.checked : el.value;
   }
 }
@@ -750,6 +764,7 @@ async function guardarMov(otro) {
   if (!(monto > 0)) return err('Ingresá un monto mayor a cero.');
   if (!v.cuenta_id) return err('Elegí la cuenta.');
   if (v.tipo === 'transferencia' && !v.cuenta_destino_id) return err('Elegí la cuenta destino.');
+  if (v.nuevaCat) return err('Terminá de crear la categoría nueva (o cancelala).');
   if (v.tipo !== 'transferencia' && !v.categoria_id) return err('Elegí la categoría.');
   let proveedor_id = null;
   try {
@@ -862,6 +877,16 @@ const A = {
     const x = S.movs.find((m) => m.id === +el.dataset.id); if (!x) return;
     abrirModal({ kind: 'mov', v: { ...x, monto: String(x.monto).replace('.', ','), proveedor: (proveedor(x.proveedor_id) || {}).nombre || '' } });
   },
+  crearCatInline: async () => {
+    leerMovForm(); const v = S.modal.v; const nc = v.nuevaCat; const errEl = document.getElementById('movErr');
+    if (!String(nc.nombre || '').trim()) { errEl.textContent = 'Escribí el nombre de la categoría.'; return; }
+    try {
+      const r = await api('catalogo', { method: 'POST', body: { tabla: 'categorias', item: { nombre: nc.nombre.trim(), tipo: nc.tipo, orden: 50, activa: true } } });
+      await recargarDatos();
+      v.categoria_id = r.id; v.nuevaCat = null; S.modal.noFocus = true; renderModal(); toast('Categoría creada');
+    } catch (e) { errEl.textContent = e.message; }
+  },
+  cancelarCatInline: () => { leerMovForm(); S.modal.v.nuevaCat = null; S.modal.noFocus = true; renderModal(); },
   movTipo: (el) => {
     leerMovForm(); const v = S.modal.v; const t = el.dataset.v; if (t === v.tipo) return;
     v.tipo = t; const c = categoria(+v.categoria_id);
@@ -973,6 +998,12 @@ document.addEventListener('change', (e) => {
   if (el.dataset.filtro) { S.f[el.dataset.filtro] = el.value; render(); return; }
   if (el.dataset.actionChange === 'recTipo') { leerCatForm(); S.modal.noFocus = true; renderModal(); return; }
   if (el.name === 'cuenta_id' && S.modal && S.modal.kind === 'mov' && S.modal.v.tipo === 'transferencia') { leerMovForm(); S.modal.noFocus = true; renderModal(); }
+  if (el.name === 'categoria_id' && S.modal && S.modal.kind === 'mov') {
+    leerMovForm(); const v = S.modal.v;
+    if (v.categoria_id === '__nueva') { v.categoria_id = ''; v.nuevaCat = { nombre: '', tipo: v.tipo === 'ingreso' ? 'ingreso' : 'variable' }; }
+    S.modal.noFocus = true; renderModal();
+    const f = $modal.querySelector(v.nuevaCat ? '[name=nc_nombre]' : '[name=detalle]'); if (f) f.focus();
+  }
 });
 let qT;
 document.addEventListener('input', (e) => {
