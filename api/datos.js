@@ -1,8 +1,9 @@
-import { leerConfig, movimientos, INICIO } from '../lib/db.js';
+import { leerConfig, movimientos, aplicarAutomaticos, INICIO } from '../lib/db.js';
 import { json, protegido } from '../lib/util.js';
 import { pedidosToken } from '../lib/pedidos.js';
 
 export const GET = protegido(async (request, yo) => {
+  await aplicarAutomaticos().catch((e) => console.error('automaticos', e));
   const [c, movs] = await Promise.all([leerConfig(), movimientos()]);
   const saldo = {};
   for (const m of movs) {

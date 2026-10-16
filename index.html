@@ -327,13 +327,17 @@ function estadoVencimientos(m) {
   // Un vencimiento se da por pagado si hay un movimiento marcado con él o uno que claramente le corresponde
   const corresponde = (r, x) => {
     if (x.recurrente_id) return x.recurrente_id === r.id;
+    if (r.automatico) return false;
     if (r.tipo === 'transferencia') return x.tipo === 'transferencia' && x.cuenta_destino_id === r.cuenta_destino_id;
     if (x.tipo !== 'egreso' || x.categoria_id !== r.categoria_id) return false;
     if (r.proveedor_id) return x.proveedor_id === r.proveedor_id;
     return usoCat[r.categoria_id] === 1 && !tomados.has(x.id);
   };
   return lista.map((r) => {
-    const pagos = movs.filter((x) => corresponde(r, x));
+    // los marcados con el vencimiento cuentan todos; si se reconoce por categoría/proveedor, solo el primero
+    const marcados = movs.filter((x) => x.recurrente_id === r.id);
+    const reconocidos = movs.filter((x) => corresponde(r, x));
+    const pagos = marcados.length ? marcados : r.tipo === 'transferencia' ? reconocidos : reconocidos.slice(-1);
     const pagado = pagos.reduce((a, x) => a + x.monto, 0);
     const dia = Math.min(r.dia, +finMes(m).slice(8));
     const fecha = `${m}-${pad(dia)}`;
@@ -447,8 +451,8 @@ function vPanel() {
   <div class="grid2">
     <section class="card">
       <h2>Vencimientos de ${MESES[+S.mes.slice(5) - 1]} <small>${pendV.length} por pagar</small><span class="sp"></span><button class="btn ghost sm" data-action="tab" data-v="ajustes" data-sub="recurrentes">Editar</button></h2>
-      ${venc.length ? venc.map((v) => `<div class="li"><span class="grow">${esc(v.r.nombre)}<small>${fechaCorta(v.fecha)}${v.r.monto ? ' · estimado ' + $$(v.r.monto) : ''}</small></span>
-        ${v.estado === 'pagado' ? `<span class="amt">${$$(v.pagado)}</span>${pill.pagado}` : `${pill[v.estado]}<button class="btn sm" data-action="pagarRec" data-id="${v.r.id}">Pagar</button>`}</div>`).join('') : '<p class="hint">Todavía no hay gastos fijos programados. Agregalos desde Ajustes.</p>'}
+      ${venc.length ? venc.map((v) => `<div class="li"><span class="grow">${esc(v.r.nombre)}<small>${fechaCorta(v.fecha)}${v.r.monto ? (v.r.automatico ? ' · ' : ' · estimado ') + $$(v.r.monto) : ''}${v.r.automatico ? ' · débito automático' : ''}</small></span>
+        ${v.estado === 'pagado' ? `<span class="amt">${$$(v.pagado)}</span>${pill.pagado}` : v.r.automatico && v.estado !== 'vencido' ? '<span class="pill p-mut">Se debita solo</span>' : `${pill[v.estado]}<button class="btn sm" data-action="pagarRec" data-id="${v.r.id}">Pagar</button>`}</div>`).join('') : '<p class="hint">Todavía no hay gastos fijos programados. Agregalos desde Ajustes.</p>'}
     </section>
     <section class="card">
       <h2>Cobros pendientes<span class="sp"></span><button class="btn ghost sm" data-action="tab" data-v="cobros">Ver todo</button></h2>
@@ -514,7 +518,7 @@ function movsFiltrados() {
     if (f.categoria && x.categoria_id !== +f.categoria) return false;
     if (f.tipoCat) { const c = categoria(x.categoria_id); if (x.tipo === 'transferencia' || !c || c.tipo !== f.tipoCat) return false; }
     if (f.proveedor && x.proveedor_id !== +f.proveedor) return false;
-    if (f.usuario && String(x.creado_por || 'planilla') !== f.usuario) return false;
+    if (f.usuario && String(x.creado_por || (x.origen === 'automatico' ? 'auto' : 'planilla')) !== f.usuario) return false;
     if (q) {
       const t = [x.detalle, x.canal, (proveedor(x.proveedor_id) || {}).nombre, (categoria(x.categoria_id) || {}).nombre, String(Math.round(x.monto))].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
@@ -529,7 +533,7 @@ function descMov(x) {
   const s = [c ? c.nombre : 'Sin categoría', p && x.detalle ? p.nombre : '', x.canal].filter(Boolean).join(' · ');
   return { t, s, cls: c ? c.tipo : 'revisar' };
 }
-const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : 'Planilla');
+const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : 'Planilla');
 
 function vMovs() {
   const f = S.f;
@@ -558,7 +562,7 @@ function vMovs() {
       <select data-filtro="categoria" aria-label="Categoría">${opt(S.D.categorias, f.categoria, 'Todas las categorías')}</select>
       <select data-filtro="cuenta" aria-label="Cuenta">${opt(S.D.cuentas, f.cuenta, 'Todas las cuentas')}</select>
       <select data-filtro="proveedor" aria-label="Proveedor">${opt(S.D.proveedores, f.proveedor, 'Todos los proveedores')}</select>
-      <select data-filtro="usuario" aria-label="Cargado por"><option value="">Cargado por cualquiera</option>${S.D.usuarios.map((u) => `<option value="${u.id}"${f.usuario === String(u.id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}<option value="planilla"${f.usuario === 'planilla' ? ' selected' : ''}>Planilla (importado)</option></select>
+      <select data-filtro="usuario" aria-label="Cargado por"><option value="">Cargado por cualquiera</option>${S.D.usuarios.map((u) => `<option value="${u.id}"${f.usuario === String(u.id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}<option value="planilla"${f.usuario === 'planilla' ? ' selected' : ''}>Planilla (importado)</option><option value="auto"${f.usuario === 'auto' ? ' selected' : ''}>Débitos automáticos</option></select>
       ${hayFiltro ? `<button class="btn ghost" data-action="limpiarFiltros">${icon('x')} Limpiar filtros</button>` : ''}
     </div>
     ${html || `<div class="empty">${hayFiltro ? 'Ningún movimiento coincide con los filtros.' : 'No hay movimientos este mes.'}</div>`}
@@ -647,7 +651,7 @@ function vAjustes() {
     <p class="hint" style="margin:10px 0 0">"Ajustar saldo" carga la diferencia contra el saldo real como movimiento financiero (no afecta el resultado). Sirve para el saldo inicial y para el arqueo de efectivo. En las tarjetas, la deuda se ve en negativo: las compras con tarjeta son egresos de la tarjeta y el pago del resumen es una transferencia desde el banco o Mercado Pago.</p>
   </section>
   <section class="card" id="sec-recurrentes"><h2>Gastos fijos y vencimientos<span class="sp"></span><button class="btn sm" data-action="editarCat" data-tabla="recurrentes">${icon('plus', 15)} Nuevo</button></h2>
-    ${D.recurrentes.map((r) => `<div class="li click" data-action="editarCat" data-tabla="recurrentes" data-id="${r.id}"><span class="grow">${esc(r.nombre)}${r.activo ? '' : ' <span class="pill p-mut">Inactivo</span>'}<small>Día ${r.dia} · ${r.tipo === 'transferencia' ? 'Pago a ' + esc((cuenta(r.cuenta_destino_id) || {}).nombre || '') : esc((categoria(r.categoria_id) || {}).nombre || '')}${r.proveedor_id ? ' · ' + esc((proveedor(r.proveedor_id) || {}).nombre) : ''}</small></span><span class="amt">${r.monto ? $$(r.monto) : '<span class="mut">variable</span>'}</span></div>`).join('')}
+    ${D.recurrentes.map((r) => `<div class="li click" data-action="editarCat" data-tabla="recurrentes" data-id="${r.id}"><span class="grow">${esc(r.nombre)}${r.activo ? '' : ' <span class="pill p-mut">Inactivo</span>'}<small>Día ${r.dia}${r.automatico ? ' · débito automático' : ''} · ${r.tipo === 'transferencia' ? 'Pago a ' + esc((cuenta(r.cuenta_destino_id) || {}).nombre || '') : esc((categoria(r.categoria_id) || {}).nombre || '')}${r.proveedor_id ? ' · ' + esc((proveedor(r.proveedor_id) || {}).nombre) : ''}</small></span><span class="amt">${r.monto ? $$(r.monto) : '<span class="mut">variable</span>'}</span></div>`).join('')}
   </section>
   <section class="card"><h2>Categorías<span class="sp"></span><button class="btn sm" data-action="editarCat" data-tabla="categorias">${icon('plus', 15)} Nueva categoría</button></h2>
     ${Object.keys(TIPO_CAT).map((t) => `<div class="sec-t">${TIPO_CAT[t]}</div>${grupo(t).map((c) => `<div class="li click" data-action="editarCat" data-tabla="categorias" data-id="${c.id}"><span class="grow">${esc(c.nombre)}${c.activa ? '' : ' <span class="pill p-mut">Inactiva</span>'}</span></div>`).join('') || '<p class="hint">—</p>'}`).join('')}
@@ -706,7 +710,7 @@ function mMov(m) {
   const seg = ['ingreso', 'egreso', 'transferencia'].map((k) => `<button type="button" class="${t === k ? 'on' : ''}" data-action="movTipo" data-v="${k}"${editando && v.grupo ? ' disabled' : ''}>${k[0].toUpperCase() + k.slice(1)}</button>`).join('');
   const rec = v.recurrente_id ? S.D.recurrentes.find((r) => r.id === +v.recurrente_id) : null;
   const titulo = editando ? 'Editar movimiento' : v.pedidoRef ? 'Registrar pago de pedido' : rec ? `Pagar ${rec.nombre}` : 'Nuevo movimiento';
-  const meta = editando ? `<div class="meta">Cargado por ${esc(quien(v))} el ${new Date(v.creado_en).toLocaleString('es-AR')}${v.editado_por ? ` · editado por ${esc((usuario(v.editado_por) || {}).nombre)} el ${new Date(v.editado_en).toLocaleString('es-AR')}` : ''}${v.origen === 'planilla' ? ' · importado de la planilla' : ''}${v.grupo ? ' · forma parte de una carga con varias líneas' : ''}${v.pedido_ref ? ' · vinculado a un pago de pedido' : ''}</div>` : '';
+  const meta = editando ? `<div class="meta">Cargado por ${esc(quien(v))} el ${new Date(v.creado_en).toLocaleString('es-AR')}${v.editado_por ? ` · editado por ${esc((usuario(v.editado_por) || {}).nombre)} el ${new Date(v.editado_en).toLocaleString('es-AR')}` : ''}${v.origen === 'planilla' ? ' · importado de la planilla' : ''}${v.origen === 'automatico' ? ' · débito automático' : ''}${v.grupo ? ' · forma parte de una carga con varias líneas' : ''}${v.pedido_ref ? ' · vinculado a un pago de pedido' : ''}</div>` : '';
   return `<form id="movForm" autocomplete="off">
     <h3>${titulo}<span class="sp"></span><button type="button" class="btn ghost icon sm" data-action="cerrar" aria-label="Cerrar">${icon('x')}</button></h3>
     <div class="seg">${seg}</div>
@@ -782,7 +786,7 @@ const CAT_DEF = {
   proveedores: { titulo: 'proveedor', campos: [['nombre', 'Nombre', 'text', 'full'], ['rubro', 'Rubro', 'text', '', 'Ej: Costura'], ['telefono', 'Teléfono', 'tel'], ['notas', 'Notas', 'textarea', 'full'], ['activo', 'Activo', 'check', 'full']], nuevo: { activo: true } },
   cuentas: { titulo: 'cuenta', campos: [['nombre', 'Nombre', 'text', 'full'], ['tipo', 'Tipo', 'sel:cuenta'], ['orden', 'Orden', 'number'], ['activa', 'Activa', 'check', 'full']], nuevo: { tipo: 'banco', activa: true, orden: 50 } },
   categorias: { titulo: 'categoría', campos: [['nombre', 'Nombre', 'text', 'full'], ['tipo', 'Grupo', 'sel:cat', 'full'], ['orden', 'Orden', 'number'], ['activa', 'Activa', 'check']], nuevo: { tipo: 'variable', activa: true, orden: 50 } },
-  recurrentes: { titulo: 'vencimiento', campos: [['nombre', 'Nombre', 'text', 'full'], ['tipo', 'Tipo', 'sel:rec'], ['dia', 'Día de vencimiento', 'number'], ['categoria_id', 'Categoría', 'sel:categoria', 'full'], ['cuenta_destino_id', 'Tarjeta o cuenta a pagar', 'sel:destino', 'full'], ['proveedor_id', 'Proveedor', 'sel:proveedor'], ['monto', 'Monto estimado ($)', 'number'], ['cuenta_id', 'Se paga desde', 'sel:cuentaPago', 'full'], ['activo', 'Activo', 'check', 'full']], nuevo: { tipo: 'egreso', dia: 10, activo: true } },
+  recurrentes: { titulo: 'vencimiento', campos: [['nombre', 'Nombre', 'text', 'full'], ['tipo', 'Tipo', 'sel:rec'], ['dia', 'Día de vencimiento', 'number'], ['categoria_id', 'Categoría', 'sel:categoria', 'full'], ['cuenta_destino_id', 'Tarjeta o cuenta a pagar', 'sel:destino', 'full'], ['proveedor_id', 'Proveedor', 'sel:proveedor'], ['monto', 'Monto estimado ($)', 'number'], ['cuenta_id', 'Se paga desde (cuenta o tarjeta)', 'sel:cuentaPago', 'full'], ['automatico', 'Débito automático: se carga solo el día del vencimiento', 'check', 'full'], ['activo', 'Activo', 'check', 'full']], nuevo: { tipo: 'egreso', dia: 10, activo: true, automatico: false } },
 };
 function mCat(m) {
   const d = CAT_DEF[m.tabla], v = m.v;
@@ -809,7 +813,8 @@ function mCat(m) {
     <div class="fgrid">${d.campos.map(campo).join('')}</div>
     <div class="err" id="catErr"></div>
     <div class="actions">${m.tabla === 'proveedores' && v.id ? `<button type="button" class="btn" data-action="movsProv" data-id="${v.id}">Ver movimientos</button>` : ''}<span class="sp"></span><button type="button" class="btn" data-action="cerrar">Cancelar</button><button class="btn primary">Guardar</button></div>
-    ${m.tabla === 'categorias' ? '<p class="meta">Para no perder historial, las categorías no se borran: desactivalas si ya no las usás.</p>' : ''}</form>`;
+    ${m.tabla === 'categorias' ? '<p class="meta">Para no perder historial, las categorías no se borran: desactivalas si ya no las usás.</p>' : ''}
+    ${m.tabla === 'recurrentes' ? '<p class="meta">Si es un gasto personal (ej: Adobe tuyo), elegí la categoría "Retiros Nicolas": sale de la ganancia y no ensucia los gastos de ConfeTex. Con débito automático, la caja crea el movimiento sola cada mes desde hoy; si el monto cambia, editás ese movimiento.</p>' : ''}</form>`;
 }
 function leerCatForm() {
   const f = document.getElementById('catForm'); if (!f) return;

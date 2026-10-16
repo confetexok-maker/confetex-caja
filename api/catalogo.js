@@ -1,4 +1,4 @@
-import { actualizarConfig } from '../lib/db.js';
+import { actualizarConfig, hoyAR } from '../lib/db.js';
 import { json, body, protegido, falla, hashPin, pinValido, pinOk, claveAltaOk } from '../lib/util.js';
 
 const TIPOS_CUENTA = ['billetera', 'banco', 'efectivo', 'tarjeta'];
@@ -42,7 +42,11 @@ const TABLAS = {
       if (!dia || dia < 1 || dia > 31) throw falla('El día de vencimiento va de 1 a 31.');
       if (tipo === 'egreso' && !entero(x.categoria_id)) throw falla('Elegí la categoría del gasto.');
       if (tipo === 'transferencia' && !entero(x.cuenta_destino_id)) throw falla('Elegí la tarjeta o cuenta destino.');
+      const automatico = x.automatico === true || x.automatico === 'true' || x.automatico === 'on';
+      if (automatico && !(montoOpc(x.monto) > 0)) throw falla('Para el débito automático poné el monto que se debita.');
+      if (automatico && !entero(x.cuenta_id)) throw falla('Elegí desde qué cuenta o tarjeta se debita.');
       return {
+        automatico,
         nombre, tipo, dia, monto: montoOpc(x.monto), activo: bool(x.activo),
         categoria_id: tipo === 'egreso' ? entero(x.categoria_id) : null,
         proveedor_id: entero(x.proveedor_id), cuenta_id: entero(x.cuenta_id),
@@ -70,10 +74,12 @@ export const POST = protegido(async (request, yo) => {
     if (b.item.id) {
       const x = lista.find((y) => y.id === +b.item.id);
       if (!x) throw falla('No se encontró el registro.', 404);
+      if (b.tabla === 'recurrentes' && c.automatico && !x.automatico) c.auto_desde = hoyAR();
       Object.assign(x, c);
       return x.id;
     }
     cfg.seq[b.tabla] = (cfg.seq[b.tabla] || Math.max(0, ...lista.map((x) => x.id))) + 1;
+    if (b.tabla === 'recurrentes' && c.automatico) c.auto_desde = hoyAR();
     lista.push({ id: cfg.seq[b.tabla], ...c });
     return cfg.seq[b.tabla];
   });
