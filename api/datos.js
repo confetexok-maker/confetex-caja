@@ -1,6 +1,7 @@
 import { leerConfig, movimientos, aplicarAutomaticos, INICIO } from '../lib/db.js';
 import { json, protegido } from '../lib/util.js';
 import { pedidosToken } from '../lib/pedidos.js';
+import { tnConfigurada } from '../lib/tiendanube.js';
 
 export const GET = protegido(async (request, yo) => {
   await aplicarAutomaticos().catch((e) => console.error('automaticos', e));
@@ -21,5 +22,10 @@ export const GET = protegido(async (request, yo) => {
     proveedores: [...c.proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
     recurrentes: [...c.recurrentes].sort((a, b) => (a.dia - b.dia) || (a.id - b.id)),
     pedidosConectado: Boolean(pedidosToken() || process.env.PEDIDOS_MOCK),
+    tiendanube: (() => {
+      const t = c.tiendanube;
+      return { configurada: tnConfigurada(), conectada: Boolean(t && t.access_token), store_id: t ? t.store_id : null, desde: t ? t.desde : null,
+        cuenta_id: t ? t.cuenta_id : null, comision_pct: t ? t.comision_pct : null, comision_mp_pct: t ? t.comision_mp_pct : null, ultima_sync: t ? t.ultima_sync : null, ultimo_error: t ? t.ultimo_error : null };
+    })(),
   });
 });

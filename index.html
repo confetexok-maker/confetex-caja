@@ -265,7 +265,15 @@ async function cargarTodo() {
   S.view = 'loading'; render();
   S.D = await api('datos');
   await cargarMovs(true);
-  S.view = 'app'; render();
+  S.view = 'app';
+  const qs = new URLSearchParams(location.search); const tn = qs.get('tn');
+  if (tn) {
+    history.replaceState(null, '', '/');
+    S.tab = 'ajustes'; render();
+    const msg = { ok: 'Tiendanube conectado. Las ventas pagadas van a entrar solas.', error: 'No se pudo conectar Tiendanube. ' + (qs.get('msg') || ''), 'sin-app': 'Falta configurar la aplicación de Tiendanube.' }[tn];
+    if (msg) toast(msg);
+    const sec = document.getElementById('sec-tiendanube'); if (sec) sec.scrollIntoView();
+  } else render();
   if (S.D.pedidosConectado) cargarPedidos();
 }
 async function recargarDatos() { S.D = await api('datos'); }
@@ -518,7 +526,7 @@ function movsFiltrados() {
     if (f.categoria && x.categoria_id !== +f.categoria) return false;
     if (f.tipoCat) { const c = categoria(x.categoria_id); if (x.tipo === 'transferencia' || !c || c.tipo !== f.tipoCat) return false; }
     if (f.proveedor && x.proveedor_id !== +f.proveedor) return false;
-    if (f.usuario && String(x.creado_por || (x.origen === 'automatico' ? 'auto' : 'planilla')) !== f.usuario) return false;
+    if (f.usuario && String(x.creado_por || ({ automatico: 'auto', tiendanube: 'tn' })[x.origen] || 'planilla') !== f.usuario) return false;
     if (q) {
       const t = [x.detalle, x.canal, (proveedor(x.proveedor_id) || {}).nombre, (categoria(x.categoria_id) || {}).nombre, String(Math.round(x.monto))].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
@@ -533,7 +541,7 @@ function descMov(x) {
   const s = [c ? c.nombre : 'Sin categoría', p && x.detalle ? p.nombre : '', x.canal].filter(Boolean).join(' · ');
   return { t, s, cls: c ? c.tipo : 'revisar' };
 }
-const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : 'Planilla');
+const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : x.origen === 'tiendanube' ? 'Tiendanube' : 'Planilla');
 
 function vMovs() {
   const f = S.f;
@@ -562,7 +570,7 @@ function vMovs() {
       <select data-filtro="categoria" aria-label="Categoría">${opt(S.D.categorias, f.categoria, 'Todas las categorías')}</select>
       <select data-filtro="cuenta" aria-label="Cuenta">${opt(S.D.cuentas, f.cuenta, 'Todas las cuentas')}</select>
       <select data-filtro="proveedor" aria-label="Proveedor">${opt(S.D.proveedores, f.proveedor, 'Todos los proveedores')}</select>
-      <select data-filtro="usuario" aria-label="Cargado por"><option value="">Cargado por cualquiera</option>${S.D.usuarios.map((u) => `<option value="${u.id}"${f.usuario === String(u.id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}<option value="planilla"${f.usuario === 'planilla' ? ' selected' : ''}>Planilla (importado)</option><option value="auto"${f.usuario === 'auto' ? ' selected' : ''}>Débitos automáticos</option></select>
+      <select data-filtro="usuario" aria-label="Cargado por"><option value="">Cargado por cualquiera</option>${S.D.usuarios.map((u) => `<option value="${u.id}"${f.usuario === String(u.id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}<option value="planilla"${f.usuario === 'planilla' ? ' selected' : ''}>Planilla (importado)</option><option value="auto"${f.usuario === 'auto' ? ' selected' : ''}>Débitos automáticos</option><option value="tn"${f.usuario === 'tn' ? ' selected' : ''}>Tiendanube (automático)</option></select>
       ${hayFiltro ? `<button class="btn ghost" data-action="limpiarFiltros">${icon('x')} Limpiar filtros</button>` : ''}
     </div>
     ${html || `<div class="empty">${hayFiltro ? 'Ningún movimiento coincide con los filtros.' : 'No hay movimientos este mes.'}</div>`}
@@ -656,6 +664,20 @@ function vAjustes() {
   <section class="card"><h2>Categorías<span class="sp"></span><button class="btn sm" data-action="editarCat" data-tabla="categorias">${icon('plus', 15)} Nueva categoría</button></h2>
     ${Object.keys(TIPO_CAT).map((t) => `<div class="sec-t">${TIPO_CAT[t]}</div>${grupo(t).map((c) => `<div class="li click" data-action="editarCat" data-tabla="categorias" data-id="${c.id}"><span class="grow">${esc(c.nombre)}${c.activa ? '' : ' <span class="pill p-mut">Inactiva</span>'}</span></div>`).join('') || '<p class="hint">—</p>'}`).join('')}
   </section>
+  <section class="card" id="sec-tiendanube"><h2>Tiendanube <small>${D.tiendanube.conectada ? 'conectada' : 'sin conectar'}</small></h2>
+    ${!D.tiendanube.configurada ? '<p class="hint" style="margin:0">Falta cargar el ID y el secreto de la aplicación de Tiendanube en Vercel (TN_CLIENT_ID y TN_CLIENT_SECRET).</p>'
+    : !D.tiendanube.conectada ? '<p class="hint" style="margin:0 0 10px">Cuando conectes, cada venta pagada en la tienda se carga sola como ingreso (venta, envío y comisión).</p><a class="btn primary" href="/api/tiendanube?accion=conectar">Conectar Tiendanube</a>'
+    : `<p class="hint" style="margin:0 0 10px">Las órdenes pagadas entran solas como "Venta web #número". Si una orden se cancela, se borra. Tienda ${esc(D.tiendanube.store_id)}${D.tiendanube.ultima_sync ? ' · última revisión ' + new Date(D.tiendanube.ultima_sync).toLocaleString('es-AR') : ''}.</p>
+      ${D.tiendanube.ultimo_error ? `<div class="banner">${icon('alert')}<span>${esc(D.tiendanube.ultimo_error)}</span></div>` : ''}
+      <form id="tnForm" class="fgrid">
+        <label class="f"><span>Cargar ventas desde</span><input type="date" name="desde" value="${esc(D.tiendanube.desde)}"></label>
+        <label class="f"><span>La plata entra en</span><select name="cuenta_id">${optCuentas(D.tiendanube.cuenta_id)}</select></label>
+        <label class="f"><span>Comisión Pago Nube (%)</span><input name="comision_pct" inputmode="decimal" value="${esc(String(D.tiendanube.comision_pct ?? 0).replace('.', ','))}"></label>
+        <label class="f"><span>Comisión Mercado Pago (%)</span><input name="comision_mp_pct" inputmode="decimal" value="${esc(String(D.tiendanube.comision_mp_pct ?? 0).replace('.', ','))}"></label>
+        <div class="actions full" style="margin-top:4px"><button class="btn primary">Guardar</button><button type="button" class="btn" data-action="tnSync">${icon('refresh', 15)} Revisar ventas ahora</button><span class="sp"></span><button type="button" class="btn ghost danger" data-action="tnDesconectar">Desconectar</button></div>
+      </form>
+      <p class="hint" style="margin:10px 0 0">La comisión se calcula sobre el total de cada orden, según cómo pagó el cliente (poné 0 si no querés que la cargue). Con tus ventas de octubre: Pago Nube cobró alrededor de 1,8 % y Mercado Pago alrededor de 11,5 % (incluye impuestos); revisalo con tu resumen. Las ventas anteriores a "Cargar ventas desde" no se tocan, así no se duplican con las que ya cargaste a mano.</p>`}
+  </section>
   <section class="card"><h2>App de pedidos</h2>
     <p class="hint" style="margin:0">${D.pedidosConectado ? 'Conectada. Los saldos y pagos de los pedidos se leen de la app de pedidos (solo la información financiera).' : 'Sin conectar. En Vercel, conectá el Blob store de la app de pedidos a este proyecto con el prefijo PEDIDOS (ver README).'}</p>
   </section>`;
@@ -719,7 +741,7 @@ function mMov(m) {
   const seg = ['ingreso', 'egreso', 'transferencia'].map((k) => `<button type="button" class="${t === k ? 'on' : ''}" data-action="movTipo" data-v="${k}"${editando && v.grupo ? ' disabled' : ''}>${k[0].toUpperCase() + k.slice(1)}</button>`).join('');
   const rec = v.recurrente_id ? S.D.recurrentes.find((r) => r.id === +v.recurrente_id) : null;
   const titulo = editando ? 'Editar movimiento' : v.pedidoRef ? 'Registrar pago de pedido' : rec ? `Pagar ${rec.nombre}` : 'Nuevo movimiento';
-  const meta = editando ? `<div class="meta">Cargado por ${esc(quien(v))} el ${new Date(v.creado_en).toLocaleString('es-AR')}${v.editado_por ? ` · editado por ${esc((usuario(v.editado_por) || {}).nombre)} el ${new Date(v.editado_en).toLocaleString('es-AR')}` : ''}${v.origen === 'planilla' ? ' · importado de la planilla' : ''}${v.origen === 'automatico' ? ' · débito automático' : ''}${v.grupo ? ' · forma parte de una carga con varias líneas' : ''}${v.pedido_ref ? ' · vinculado a un pago de pedido' : ''}</div>` : '';
+  const meta = editando ? `<div class="meta">Cargado por ${esc(quien(v))} el ${new Date(v.creado_en).toLocaleString('es-AR')}${v.editado_por ? ` · editado por ${esc((usuario(v.editado_por) || {}).nombre)} el ${new Date(v.editado_en).toLocaleString('es-AR')}` : ''}${v.origen === 'planilla' ? ' · importado de la planilla' : ''}${v.origen === 'automatico' ? ' · débito automático' : ''}${v.origen === 'tiendanube' ? ' · cargado solo desde Tiendanube' : ''}${v.grupo ? ' · forma parte de una carga con varias líneas' : ''}${v.pedido_ref ? ' · vinculado a un pago de pedido' : ''}</div>` : '';
   return `<form id="movForm" autocomplete="off">
     <h3>${titulo}<span class="sp"></span><button type="button" class="btn ghost icon sm" data-action="cerrar" aria-label="Cerrar">${icon('x')}</button></h3>
     <div class="seg">${seg}</div>
@@ -877,6 +899,15 @@ const A = {
     const x = S.movs.find((m) => m.id === +el.dataset.id); if (!x) return;
     abrirModal({ kind: 'mov', v: { ...x, monto: String(x.monto).replace('.', ','), proveedor: (proveedor(x.proveedor_id) || {}).nombre || '' } });
   },
+  tnSync: async (el) => {
+    el.disabled = true; el.textContent = 'Revisando…';
+    try { const r = await api('tiendanube', { method: 'POST', body: { accion: 'sincronizar' } }); toast(r.creadas ? `${r.creadas} ventas nuevas cargadas` : 'No había ventas nuevas'); await refrescar(); }
+    catch (e) { toast(e.message); el.disabled = false; el.textContent = 'Revisar ventas ahora'; }
+  },
+  tnDesconectar: async () => {
+    if (!confirm('¿Desconectar Tiendanube? Las ventas ya cargadas quedan; las nuevas dejan de entrar solas.')) return;
+    try { await api('tiendanube', { method: 'POST', body: { accion: 'desconectar' } }); toast('Tiendanube desconectado'); await refrescar(); } catch (e) { toast(e.message); }
+  },
   crearCatInline: async () => {
     leerMovForm(); const v = S.modal.v; const nc = v.nuevaCat; const errEl = document.getElementById('movErr');
     if (!String(nc.nombre || '').trim()) { errEl.textContent = 'Escribí el nombre de la categoría.'; return; }
@@ -984,6 +1015,11 @@ document.addEventListener('submit', async (e) => {
   if (f.id === 'movForm') return guardarMov(e.submitter && e.submitter.name === 'otro');
   if (f.id === 'catForm') return guardarCat();
   if (f.id === 'promptForm') return enviarPrompt();
+  if (f.id === 'tnForm') {
+    const v = Object.fromEntries(new FormData(f));
+    try { await api('tiendanube', { method: 'POST', body: { accion: 'config', ...v } }); toast('Configuración guardada'); await refrescar(); } catch (er) { toast(er.message); }
+    return;
+  }
   if (f.id === 'loginForm') {
     const L = S.login, u = L.usuarios.find((x) => x.id === L.sel); if (!u) return;
     const fd = Object.fromEntries(new FormData(f));
