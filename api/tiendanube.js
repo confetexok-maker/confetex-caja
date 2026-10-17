@@ -44,8 +44,9 @@ export const POST = protegido(async (request) => {
     const pctMp = Number(String(b.comision_mp_pct ?? '').replace(',', '.'));
     if (!(pct >= 0 && pct <= 30) || !(pctMp >= 0 && pctMp <= 30)) throw falla('La comisión tiene que estar entre 0 y 30 %.');
     if (!cfg.cuentas.some((c) => c.id === +b.cuenta_id)) throw falla('Elegí la cuenta donde entra la plata.');
+    if (!cfg.cuentas.some((c) => c.id === +b.cuenta_pn_id)) throw falla('Elegí la cuenta donde entran los cobros de Pago Nube.');
     if (!esFechaOk(b.desde)) throw falla('La fecha de inicio no es válida.');
-    await actualizarConfig((c) => { Object.assign(c.tiendanube, { comision_pct: Math.round(pct * 100) / 100, comision_mp_pct: Math.round(pctMp * 100) / 100, cuenta_id: +b.cuenta_id, desde: b.desde }); });
+    await actualizarConfig((c) => { Object.assign(c.tiendanube, { comision_pct: Math.round(pct * 100) / 100, comision_mp_pct: Math.round(pctMp * 100) / 100, cuenta_id: +b.cuenta_id, cuenta_pn_id: +b.cuenta_pn_id, desde: b.desde }); });
     return json({ ok: true });
   }
   throw falla('Acción inválida.');

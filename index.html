@@ -451,7 +451,8 @@ function vPanel() {
     <div class="stack">
       <section class="card">
         <h2>Saldos por cuenta<span class="sp"></span><button class="btn ghost sm" data-action="tab" data-v="ajustes" data-sub="cuentas">Ajustar</button></h2>
-        ${disp.map((c) => `<div class="li click" data-action="verCuenta" data-id="${c.id}"><span class="grow">${esc(c.nombre)}<small>${TIPO_CUENTA[c.tipo] || ''}</small></span><span class="amt ${c.saldo < 0 ? 'neg' : ''}">${$$(c.saldo)}</span></div>`).join('')}
+        ${disp.map((c) => { const pn = S.D.tiendanube && c.id === S.D.tiendanube.cuenta_pn_id && c.id !== S.D.tiendanube.cuenta_id;
+          return `<div class="li click" data-action="verCuenta" data-id="${c.id}"><span class="grow">${esc(c.nombre)}<small>${pn ? (c.saldo > 0 ? 'Pendiente de pasar a ' + esc((cuenta(S.D.tiendanube.cuenta_id) || {}).nombre || 'Mercado Pago') : 'Sin saldo pendiente') : TIPO_CUENTA[c.tipo] || ''}</small></span>${pn && c.saldo > 0 ? `<button class="btn sm" data-action="pasarPN">Pasar a ${esc(((cuenta(S.D.tiendanube.cuenta_id) || {}).nombre || 'MP').replace('Mercado Pago', 'MP'))}</button>` : ''}<span class="amt ${c.saldo < 0 ? 'neg' : ''}">${$$(c.saldo)}</span></div>`; }).join('')}
         ${tarj.length ? `<div class="sec-t">Tarjetas</div>${tarj.map((c) => `<div class="li click" data-action="verCuenta" data-id="${c.id}"><span class="grow">${esc(c.nombre.replace(/^Tarjeta /, ''))}<small>${c.saldo < 0 ? 'A pagar' : c.saldo > 0 ? 'Saldo a favor' : 'Sin deuda cargada'}</small></span><span class="amt ${c.saldo < 0 ? 'neg' : ''}">${$$(c.saldo)}</span></div>`).join('')}` : ''}
       </section>
     </div>
@@ -671,7 +672,8 @@ function vAjustes() {
       ${D.tiendanube.ultimo_error ? `<div class="banner">${icon('alert')}<span>${esc(D.tiendanube.ultimo_error)}</span></div>` : ''}
       <form id="tnForm" class="fgrid">
         <label class="f"><span>Cargar ventas desde</span><input type="date" name="desde" value="${esc(D.tiendanube.desde)}"></label>
-        <label class="f"><span>La plata entra en</span><select name="cuenta_id">${optCuentas(D.tiendanube.cuenta_id)}</select></label>
+        <label class="f"><span>Cobros con Pago Nube entran en</span><select name="cuenta_pn_id">${optCuentas(D.tiendanube.cuenta_pn_id)}</select></label>
+        <label class="f"><span>Mercado Pago y otros entran en</span><select name="cuenta_id">${optCuentas(D.tiendanube.cuenta_id)}</select></label>
         <label class="f"><span>Comisión Pago Nube (%)</span><input name="comision_pct" inputmode="decimal" value="${esc(String(D.tiendanube.comision_pct ?? 0).replace('.', ','))}"></label>
         <label class="f"><span>Comisión Mercado Pago (%)</span><input name="comision_mp_pct" inputmode="decimal" value="${esc(String(D.tiendanube.comision_mp_pct ?? 0).replace('.', ','))}"></label>
         <div class="actions full" style="margin-top:4px"><button class="btn primary">Guardar</button><button type="button" class="btn" data-action="tnSync">${icon('refresh', 15)} Revisar ventas ahora</button><span class="sp"></span><button type="button" class="btn ghost danger" data-action="tnDesconectar">Desconectar</button></div>
@@ -898,6 +900,11 @@ const A = {
   editar: (el) => {
     const x = S.movs.find((m) => m.id === +el.dataset.id); if (!x) return;
     abrirModal({ kind: 'mov', v: { ...x, monto: String(x.monto).replace('.', ','), proveedor: (proveedor(x.proveedor_id) || {}).nombre || '' } });
+  },
+  pasarPN: (el, e) => {
+    e.stopPropagation();
+    const t = S.D.tiendanube; const pn = cuenta(t.cuenta_pn_id), dest = cuenta(t.cuenta_id);
+    abrirModal({ kind: 'mov', v: nuevoMov('transferencia', { cuenta_id: pn.id, cuenta_destino_id: dest.id, monto: String(Math.round(pn.saldo * 100) / 100).replace('.', ','), detalle: `Transferencia ${pn.nombre} a ${dest.nombre}` }) });
   },
   tnSync: async (el) => {
     el.disabled = true; el.textContent = 'Revisando…';

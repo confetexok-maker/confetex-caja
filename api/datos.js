@@ -26,7 +26,7 @@ export const GET = protegido(async (request, yo) => {
     tiendanube: (() => {
       const t = c.tiendanube;
       return { configurada: tnConfigurada(), conectada: Boolean(t && t.access_token), store_id: t ? t.store_id : null, desde: t ? t.desde : null,
-        cuenta_id: t ? t.cuenta_id : null, comision_pct: t ? t.comision_pct : null, comision_mp_pct: t ? t.comision_mp_pct : null, ultima_sync: t ? t.ultima_sync : null, ultimo_error: t ? t.ultimo_error : null };
+        cuenta_id: t ? t.cuenta_id : null, cuenta_pn_id: t ? t.cuenta_pn_id : null, comision_pct: t ? t.comision_pct : null, comision_mp_pct: t ? t.comision_mp_pct : null, ultima_sync: t ? t.ultima_sync : null, ultimo_error: t ? t.ultimo_error : null };
     })(),
   });
 });
