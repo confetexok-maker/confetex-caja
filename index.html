@@ -251,8 +251,13 @@ const esAdmin = () => Boolean(S.D && S.D.yo && S.D.yo.rol === 'admin');
 const signo = (m) => (m.tipo === 'ingreso' ? m.monto : m.tipo === 'egreso' ? -m.monto : 0);
 
 /* ================= arranque y sesión ================= */
+// La sesión vale solo mientras esta pestaña/app esté abierta: al cerrarla y volver a abrir, se pide usuario y PIN.
+const SES = 'caja-sesion-abierta';
+const sesionAbierta = () => { try { return sessionStorage.getItem(SES) === '1'; } catch { return false; } };
+const marcarSesion = (v) => { try { v ? sessionStorage.setItem(SES, '1') : sessionStorage.removeItem(SES); } catch {} };
 async function iniciar() {
   try {
+    if (!sesionAbierta()) await fetch('/api/login', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     const r = await api('login');
     S.login.usuarios = r.usuarios;
     if (r.usuario) { await cargarTodo(); } else { S.view = 'login'; render(); }
@@ -1015,7 +1020,7 @@ const A = {
     try { await api('catalogo', { method: 'POST', body: { tabla: 'usuarios', accion: 'rol', id: +el.dataset.id, rol: el.dataset.v } }); toast('Perfil actualizado'); await refrescar(); } catch (e) { toast(e.message); }
   },
   usuarioActivo: async (el) => { try { await api('catalogo', { method: 'POST', body: { tabla: 'usuarios', accion: 'activo', id: +el.dataset.id, activo: el.dataset.v === '1' } }); await refrescar(); } catch (e) { toast(e.message); } },
-  salir: async () => { await api('login', { method: 'DELETE' }).catch(() => {}); S.D = null; S.ped = null; S.login.sel = null; irALogin(); },
+  salir: async () => { marcarSesion(false); await api('login', { method: 'DELETE' }).catch(() => {}); S.D = null; S.ped = null; S.login.sel = null; irALogin(); },
   selUser: (el) => { S.login.sel = +el.dataset.id; S.login.err = ''; renderLogin(); },
 };
 
@@ -1041,7 +1046,7 @@ document.addEventListener('submit', async (e) => {
     const fd = Object.fromEntries(new FormData(f));
     if (!u.tienePin && fd.pin !== fd.pin2) { L.err = 'Los PIN no coinciden.'; return renderLogin(); }
     const btn = f.querySelector('button.primary'); btn.disabled = true; btn.textContent = 'Entrando…';
-    try { await api('login', { method: 'POST', body: { usuarioId: u.id, pin: fd.pin, claveAlta: fd.clave } }); L.err = ''; await cargarTodo(); }
+    try { await api('login', { method: 'POST', body: { usuarioId: u.id, pin: fd.pin, claveAlta: fd.clave } }); marcarSesion(true); L.err = ''; await cargarTodo(); }
     catch (er) { L.err = er.message; renderLogin(); }
   }
 });
