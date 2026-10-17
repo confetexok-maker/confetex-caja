@@ -14,17 +14,18 @@ export const GET = protegido(async (request, yo) => {
     if (m.tipo === 'transferencia') saldo[m.cuenta_destino_id] = (saldo[m.cuenta_destino_id] || 0) + m.monto;
   }
   const r2 = (n) => Math.round((n || 0) * 100) / 100;
+  const admin = yo.rol === 'admin';
   const orden = (a, b) => (a.orden - b.orden) || (a.id - b.id);
   return json({
     yo, inicio: INICIO,
-    usuarios: c.usuarios.map((u) => ({ id: u.id, nombre: u.nombre, activo: u.activo, tienePin: Boolean(u.pin_hash) })),
-    cuentas: [...c.cuentas].sort(orden).map((x) => ({ ...x, saldo: r2(saldo[x.id]) })),
+    usuarios: c.usuarios.map((u) => ({ id: u.id, nombre: u.nombre, activo: u.activo, rol: u.rol === 'carga' ? 'carga' : 'admin', tienePin: Boolean(u.pin_hash) })),
+    cuentas: [...c.cuentas].sort(orden).map((x) => ({ ...x, saldo: admin ? r2(saldo[x.id]) : null })),
     categorias: [...c.categorias].sort(orden),
     proveedores: [...c.proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
     recurrentes: [...c.recurrentes].sort((a, b) => (a.dia - b.dia) || (a.id - b.id)),
     pedidosConectado: Boolean(pedidosToken() || process.env.PEDIDOS_MOCK),
     tiendanube: (() => {
-      const t = c.tiendanube;
+      const t = admin ? c.tiendanube : null;
       return { configurada: tnConfigurada(), conectada: Boolean(t && t.access_token), store_id: t ? t.store_id : null, desde: t ? t.desde : null,
         cuenta_id: t ? t.cuenta_id : null, cuenta_pn_id: t ? t.cuenta_pn_id : null, comision_pct: t ? t.comision_pct : null, comision_mp_pct: t ? t.comision_mp_pct : null, ultima_sync: t ? t.ultima_sync : null, ultimo_error: t ? t.ultimo_error : null };
     })(),

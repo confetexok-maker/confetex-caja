@@ -61,6 +61,8 @@ export const POST = protegido(async (request, yo) => {
   const b = await body(request);
   if (b.tabla === 'usuarios') return usuarios(b, yo);
   const t = TABLAS[b.tabla];
+  // perfil carga: solo puede dar de alta categorías y proveedores
+  if (yo.rol !== 'admin' && (!['categorias', 'proveedores'].includes(b.tabla) || (b.item && b.item.id))) throw falla('Tu usuario no tiene permiso para esto.', 403);
   if (!t || !b.item) throw falla('Pedido inválido.');
   const c = t.campos(b.item);
   const id = await actualizarConfig((cfg) => {
@@ -89,6 +91,12 @@ export const POST = protegido(async (request, yo) => {
 const usuarioCfg = (cfg, id) => { const u = cfg.usuarios.find((x) => x.id === +id); if (!u) throw falla('Usuario inválido.', 404); return u; };
 
 async function usuarios(b, yo) {
+  if (yo.rol !== 'admin' && b.accion !== 'cambiarPin') throw falla('Tu usuario no tiene permiso para esto.', 403);
+  if (b.accion === 'rol') {
+    if (+b.id === yo.id) throw falla('No podés cambiar tu propio perfil.');
+    await actualizarConfig((cfg) => { usuarioCfg(cfg, b.id).rol = b.rol === 'admin' ? 'admin' : 'carga'; });
+    return json({ ok: true });
+  }
   if (b.accion === 'cambiarPin') {
     if (!pinValido(b.nuevo)) throw falla('El PIN nuevo tiene que tener entre 4 y 8 números.');
     const hash = hashPin(b.nuevo);
@@ -110,7 +118,7 @@ async function usuarios(b, yo) {
     const id = await actualizarConfig((cfg) => {
       if (cfg.usuarios.some((x) => x.nombre.toLowerCase() === nombre.toLowerCase())) throw falla('Ya existe un usuario con ese nombre.', 409);
       cfg.seq.usuarios = (cfg.seq.usuarios || cfg.usuarios.length) + 1;
-      cfg.usuarios.push({ id: cfg.seq.usuarios, nombre, pin_hash: null, activo: true });
+      cfg.usuarios.push({ id: cfg.seq.usuarios, nombre, rol: 'carga', pin_hash: null, activo: true });
       return cfg.seq.usuarios;
     });
     return json({ ok: true, id });

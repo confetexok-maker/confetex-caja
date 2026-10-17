@@ -247,6 +247,7 @@ const usuario = (id) => byId(S.D.usuarios, id);
 const TIPO_CAT = { ingreso: 'Ingresos', variable: 'Costos variables', fijo: 'Gastos fijos', ganancia: 'De la ganancia', financiero: 'Financiero (no es resultado)', revisar: 'Sin clasificar' };
 const TIPO_CUENTA = { billetera: 'Billetera', banco: 'Banco', efectivo: 'Efectivo', tarjeta: 'Tarjeta de crédito' };
 const CANALES = ['Tiendanube', 'WhatsApp', 'Instagram', 'Local', 'Otro'];
+const esAdmin = () => Boolean(S.D && S.D.yo && S.D.yo.rol === 'admin');
 const signo = (m) => (m.tipo === 'ingreso' ? m.monto : m.tipo === 'egreso' ? -m.monto : 0);
 
 /* ================= arranque y sesión ================= */
@@ -266,6 +267,7 @@ async function cargarTodo() {
   S.D = await api('datos');
   await cargarMovs(true);
   S.view = 'app';
+  if (!esAdmin() && (S.tab === 'panel' || !['movs', 'cobros', 'prov', 'ajustes'].includes(S.tab))) S.tab = 'movs';
   const qs = new URLSearchParams(location.search); const tn = qs.get('tn');
   if (tn) {
     history.replaceState(null, '', '/');
@@ -375,11 +377,11 @@ function render() {
   <header class="top"><div class="wrap">
     <div class="brand">ConfeTex<small>Caja</small></div>
     <nav class="tabs">
-      ${tab('panel', 'Panel')}${tab('movs', 'Movimientos')}${tab('cobros', 'Cobros', pend ? `<span class="badge">${pend}</span>` : '')}${tab('prov', 'Proveedores')}${tab('ajustes', 'Ajustes')}
+      ${esAdmin() ? tab('panel', 'Panel') : ''}${tab('movs', 'Movimientos')}${tab('cobros', 'Cobros', pend ? `<span class="badge">${pend}</span>` : '')}${tab('prov', 'Proveedores')}${tab('ajustes', esAdmin() ? 'Ajustes' : 'Mi usuario')}
     </nav>
     <div class="who"><span class="avatar">${esc(iniciales(S.D.yo.nombre))}</span>${esc(S.D.yo.nombre)}</div>
   </div></header>
-  <main class="wrap">${({ panel: vPanel, movs: vMovs, cobros: vCobros, prov: vProv, ajustes: vAjustes })[S.tab]()}</main>`;
+  <main class="wrap">${(!esAdmin() && S.tab === 'panel' ? (S.tab = 'movs') : 0, '')}${({ panel: vPanel, movs: vMovs, cobros: vCobros, prov: vProv, ajustes: vAjustes })[S.tab]()}</main>`;
   if (S.tab === 'panel') montarGrafico();
 }
 
@@ -553,7 +555,7 @@ function vMovs() {
   for (const x of list) porDia[x.fecha] = (porDia[x.fecha] || 0) + signo(x);
   for (const x of list) {
     if (x.tipo === 'ingreso') ing += x.monto; else if (x.tipo === 'egreso') egr += x.monto;
-    if (x.fecha !== dia) { dia = x.fecha; html += `<div class="day"><span>${fechaLarga(dia)}</span><span class="num">${$$s(porDia[dia])}</span></div>`; }
+    if (x.fecha !== dia) { dia = x.fecha; html += `<div class="day"><span>${fechaLarga(dia)}</span>${esAdmin() ? `<span class="num">${$$s(porDia[dia])}</span>` : ''}</div>`; }
     const d = descMov(x);
     const ct = x.tipo === 'transferencia' ? `${(cuenta(x.cuenta_id) || {}).nombre} → ${(cuenta(x.cuenta_destino_id) || {}).nombre}` : (cuenta(x.cuenta_id) || {}).nombre;
     html += `<div class="mv" data-action="editar" data-id="${x.id}">
@@ -562,7 +564,7 @@ function vMovs() {
       <div class="m ${x.tipo === 'ingreso' ? 'pos' : x.tipo === 'egreso' ? '' : 'mut'}">${x.tipo === 'transferencia' ? $$(x.monto) : $$s(signo(x))}</div></div>`;
   }
   const hayFiltro = Object.values(f).some(Boolean);
-  return `${barraMes(`<button class="btn" data-action="csv">${icon('download')} Exportar</button>`)}
+  return `${barraMes(esAdmin() ? `<button class="btn" data-action="csv">${icon('download')} Exportar</button>` : '')}
   <section class="card">
     <div class="filters">
       <input type="search" id="fq" placeholder="Buscar detalle, proveedor, monto…" value="${esc(f.q)}" aria-label="Buscar">
@@ -575,7 +577,7 @@ function vMovs() {
       ${hayFiltro ? `<button class="btn ghost" data-action="limpiarFiltros">${icon('x')} Limpiar filtros</button>` : ''}
     </div>
     ${html || `<div class="empty">${hayFiltro ? 'Ningún movimiento coincide con los filtros.' : 'No hay movimientos este mes.'}</div>`}
-    <div class="totals"><span>${list.length} movimientos</span><span class="pos">Ingresos ${$$(ing)}</span><span>Egresos ${$$(egr)}</span><b>Neto ${$$s(ing - egr)}</b></div>
+    <div class="totals"><span>${list.length} movimientos</span>${esAdmin() ? `<span class="pos">Ingresos ${$$(ing)}</span><span>Egresos ${$$(egr)}</span><b>Neto ${$$s(ing - egr)}</b>` : ''}</div>
   </section>`;
 }
 
@@ -590,11 +592,11 @@ function vCobros() {
   return `<div class="bar"><div><b style="font-size:18px">Cobros</b><div class="hint">Los pagos se cargan en la app de pedidos y acá se confirman en la caja.</div></div><div class="sp"></div>
     <button class="btn" data-action="recargarPedidos"${S.pedCargando ? ' disabled' : ''}>${icon('refresh')} ${S.pedCargando ? 'Actualizando…' : 'Actualizar'}</button></div>
   ${ped.error ? `<div class="banner">${icon('alert')}<span>${esc(ped.error)}</span></div>` : ''}
-  <div class="kpis">
+  ${esAdmin() ? `<div class="kpis">
     <div class="kpi"><span>Saldo a cobrar</span><b>${$$(tot)}</b><small>${conSaldo.length} pedidos</small></div>
     <div class="kpi"><span>Pagos para confirmar</span><b>${pend.length}</b><small>${$$(pend.reduce((a, x) => a + x.monto, 0))}</small></div>
     <div class="kpi"><span>Saldo con más de 60 días</span><b>${$$(conSaldo.filter((p) => diasDesde(p.fechaIngreso) > 60).reduce((a, p) => a + p.saldo, 0))}</b><small>&nbsp;</small></div>
-  </div>
+  </div>` : ''}
   <section class="card">
     <h2>Pagos de pedidos para confirmar <small>desde ${fechaCorta(S.D.inicio)}</small></h2>
     ${pend.length ? pend.map((x) => {
@@ -633,11 +635,11 @@ function vProv() {
   const rs = Object.entries(rubros).sort((a, b) => b[1] - a[1]); const mx = Math.max(1, ...rs.map((r) => r[1]));
   return `<div class="bar"><div class="mes"><button class="btn ghost icon sm" data-action="mes" data-d="-1" aria-label="Mes anterior">${icon('left')}</button><b>${nombreMes(S.mes)}</b><button class="btn ghost icon sm" data-action="mes" data-d="1" aria-label="Mes siguiente">${icon('right')}</button></div>
     <div class="sp"></div><button class="btn primary" data-action="editarCat" data-tabla="proveedores">${icon('plus')} Nuevo proveedor</button></div>
-  ${rs.length ? `<section class="card"><h2>Gasto por rubro en ${MESES[+S.mes.slice(5) - 1]}</h2>${rs.map(([k, v]) => `<div class="hb"><span>${esc(k)}</span><span class="tr"><i class="out" style="width:${(v / mx) * 100}%"></i></span><span>${$$(v)}</span></div>`).join('')}</section>` : ''}
+  ${rs.length && esAdmin() ? `<section class="card"><h2>Gasto por rubro en ${MESES[+S.mes.slice(5) - 1]}</h2>${rs.map(([k, v]) => `<div class="hb"><span>${esc(k)}</span><span class="tr"><i class="out" style="width:${(v / mx) * 100}%"></i></span><span>${$$(v)}</span></div>`).join('')}</section>` : ''}
   <section class="card">
     <div class="filters" style="grid-template-columns:minmax(0,1fr)"><input type="search" id="fprov" placeholder="Buscar proveedor o rubro…" value="${esc(S.qProv)}" aria-label="Buscar proveedor"></div>
-    <div class="scroll"><table class="tbl"><tr><th>Proveedor</th><th>Rubro</th><th class="r">Este mes</th><th class="r">Últimos 6 meses</th><th class="r">Último pago</th></tr>
-    ${list.map((p) => { const s = stats[p.id] || {}; return `<tr class="click" data-action="verProv" data-id="${p.id}"><td>${esc(p.nombre)}${p.activo ? '' : ' <span class="pill p-mut">Inactivo</span>'}${p.telefono ? `<div class="hint">${esc(p.telefono)}</div>` : ''}</td><td>${esc(p.rubro)}</td><td class="r">${s.mes ? $$(s.mes) : '—'}</td><td class="r">${s.total ? $$(s.total) : '—'}</td><td class="r">${s.ultimo ? fechaCorta(s.ultimo) : '—'}</td></tr>`; }).join('')}
+    <div class="scroll"><table class="tbl"><tr><th>Proveedor</th><th>Rubro</th>${esAdmin() ? '<th class="r">Este mes</th><th class="r">Últimos 6 meses</th>' : ''}<th class="r">Último pago</th></tr>
+    ${list.map((p) => { const s = stats[p.id] || {}; return `<tr class="click" data-action="verProv" data-id="${p.id}"><td>${esc(p.nombre)}${p.activo ? '' : ' <span class="pill p-mut">Inactivo</span>'}${p.telefono ? `<div class="hint">${esc(p.telefono)}</div>` : ''}</td><td>${esc(p.rubro)}</td>${esAdmin() ? `<td class="r">${s.mes ? $$(s.mes) : '—'}</td><td class="r">${s.total ? $$(s.total) : '—'}</td>` : ''}<td class="r">${s.ultimo ? fechaCorta(s.ultimo) : '—'}</td></tr>`; }).join('')}
     </table></div>
   </section>`;
 }
@@ -645,12 +647,15 @@ function vProv() {
 /* ---------- ajustes ---------- */
 function vAjustes() {
   const D = S.D;
+  if (!esAdmin()) return `<section class="card" id="sec-usuario"><h2>Tu usuario<span class="sp"></span><button class="btn sm" data-action="cambiarPin">Cambiar PIN</button><button class="btn sm ghost" data-action="salir">${icon('logout', 15)} Salir</button></h2>
+    <p class="hint" style="margin:0">Entraste como ${esc(D.yo.nombre)}. Cada movimiento queda registrado con el nombre de quien lo cargó.</p></section>`;
   const grupo = (tipo) => D.categorias.filter((c) => c.tipo === tipo);
   return `
   <section class="card" id="sec-usuario"><h2>Tu usuario<span class="sp"></span><button class="btn sm" data-action="cambiarPin">Cambiar PIN</button><button class="btn sm ghost" data-action="salir">${icon('logout', 15)} Salir</button></h2>
     <p class="hint" style="margin:0">Entraste como ${esc(D.yo.nombre)}. Cada movimiento queda registrado con el nombre de quien lo cargó.</p></section>
   <section class="card"><h2>Usuarios<span class="sp"></span><button class="btn sm" data-action="agregarUsuario">${icon('plus', 15)} Agregar</button></h2>
-    ${D.usuarios.map((u) => `<div class="li"><span class="avatar" style="background:var(--soft)">${esc(iniciales(u.nombre))}</span><span class="grow">${esc(u.nombre)}<small>${u.tienePin ? 'PIN configurado' : 'Elige su PIN la primera vez que entra (con la clave de alta)'}${u.activo ? '' : ' · inactivo'}</small></span>
+    ${D.usuarios.map((u) => `<div class="li"><span class="avatar" style="background:var(--soft)">${esc(iniciales(u.nombre))}</span><span class="grow">${esc(u.nombre)}<small>${u.rol === 'admin' ? 'Administrador' : 'Carga (sin panel, saldos ni totales)'} · ${u.tienePin ? 'PIN configurado' : 'elige su PIN al entrar (con la clave de alta)'}${u.activo ? '' : ' · inactivo'}</small></span>
+      ${u.id !== D.yo.id ? `<button class="btn sm ghost" data-action="usuarioRol" data-id="${u.id}" data-v="${u.rol === 'admin' ? 'carga' : 'admin'}">${u.rol === 'admin' ? 'Pasar a carga' : 'Hacer administrador'}</button>` : ''}
       ${u.tienePin && u.id !== D.yo.id ? `<button class="btn sm ghost" data-action="resetPin" data-id="${u.id}">Resetear PIN</button>` : ''}
       ${u.id !== D.yo.id ? `<button class="btn sm ghost" data-action="usuarioActivo" data-id="${u.id}" data-v="${u.activo ? 0 : 1}">${u.activo ? 'Desactivar' : 'Activar'}</button>` : ''}</div>`).join('')}
   </section>
@@ -944,7 +949,7 @@ const A = {
   verCuenta: (el) => { S.f = { tipo: '', cuenta: el.dataset.id, categoria: '', proveedor: '', usuario: '', q: '', tipoCat: '' }; S.tab = 'movs'; render(); window.scrollTo(0, 0); },
   movsProv: (el) => { cerrarModal(); S.f = { tipo: '', cuenta: '', categoria: '', proveedor: el.dataset.id, usuario: '', q: '', tipoCat: '' }; S.tab = 'movs'; render(); window.scrollTo(0, 0); },
   limpiarFiltros: () => { S.f = { tipo: '', cuenta: '', categoria: '', proveedor: '', usuario: '', q: '', tipoCat: '' }; render(); },
-  verProv: (el) => A.editarCat({ dataset: { tabla: 'proveedores', id: el.dataset.id } }),
+  verProv: (el) => { if (!esAdmin()) { S.f = { tipo: '', cuenta: '', categoria: '', proveedor: el.dataset.id, usuario: '', q: '', tipoCat: '' }; S.tab = 'movs'; render(); return; } A.editarCat({ dataset: { tabla: 'proveedores', id: el.dataset.id } }); },
   editarCat: (el) => {
     const tabla = el.dataset.tabla, id = +el.dataset.id;
     const src = { proveedores: S.D.proveedores, cuentas: S.D.cuentas, categorias: S.D.categorias, recurrentes: S.D.recurrentes }[tabla];
@@ -1005,6 +1010,10 @@ const A = {
   agregarUsuario: () => abrirModal({ kind: 'prompt', titulo: 'Agregar usuario', texto: 'Va a elegir su PIN la primera vez que entre, con la clave de alta.', boton: 'Agregar',
     campos: [['nombre', 'Nombre', 'text', 'autofocus required maxlength="40"']],
     ok: async (v) => { await api('catalogo', { method: 'POST', body: { tabla: 'usuarios', accion: 'agregar', nombre: v.nombre } }); cerrarModal(); toast('Usuario agregado'); await refrescar(); } }),
+  usuarioRol: async (el) => {
+    if (el.dataset.v === 'admin' && !confirm('Un administrador ve el panel, los saldos y puede cambiar toda la configuración. ¿Seguro?')) return;
+    try { await api('catalogo', { method: 'POST', body: { tabla: 'usuarios', accion: 'rol', id: +el.dataset.id, rol: el.dataset.v } }); toast('Perfil actualizado'); await refrescar(); } catch (e) { toast(e.message); }
+  },
   usuarioActivo: async (el) => { try { await api('catalogo', { method: 'POST', body: { tabla: 'usuarios', accion: 'activo', id: +el.dataset.id, activo: el.dataset.v === '1' } }); await refrescar(); } catch (e) { toast(e.message); } },
   salir: async () => { await api('login', { method: 'DELETE' }).catch(() => {}); S.D = null; S.ped = null; S.login.sel = null; irALogin(); },
   selUser: (el) => { S.login.sel = +el.dataset.id; S.login.err = ''; renderLogin(); },

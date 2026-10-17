@@ -12,6 +12,7 @@ export async function GET(request) {
     const u = new URL(request.url);
     const yo = await usuarioDe(request);
     if (!yo) return redir('/?tn=login');
+    if (yo.rol !== 'admin') return redir('/');
     if (!tnConfigurada()) return redir('/?tn=sin-app');
     if (u.searchParams.get('accion') === 'conectar') {
       const state = randomBytes(16).toString('hex');
@@ -50,4 +51,4 @@ export const POST = protegido(async (request) => {
     return json({ ok: true });
   }
   throw falla('Acción inválida.');
-});
+}, { soloAdmin: true });
