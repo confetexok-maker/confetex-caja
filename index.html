@@ -736,6 +736,13 @@ function optCategorias(tipo, sel, conNueva) {
     return cs.length ? `<optgroup label="${TIPO_CAT[t]}">${cs.map((c) => `<option value="${c.id}"${c.id === +sel ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup>` : '';
   }).join('') + (conNueva ? '<option value="__nueva">+ Nueva categoría…</option>' : '');
 }
+/** Lista para buscar categorías escribiendo (muestra el grupo al lado) + opción para crear una nueva. */
+function dlCategorias(tipo) {
+  const orden = tipo === 'ingreso' ? ['ingreso', 'financiero', 'ganancia', 'revisar', 'variable', 'fijo'] : ['variable', 'fijo', 'ganancia', 'financiero', 'revisar', 'ingreso'];
+  const cs = orden.flatMap((t) => S.D.categorias.filter((c) => c.tipo === t && c.activa));
+  return `<datalist id="dl-cat">${cs.map((c) => `<option value="${esc(c.nombre)}">${esc(TIPO_CAT[c.tipo].split(' (')[0])}</option>`).join('')}<option value="+ Nueva categoría…">Crear una categoría nueva</option></datalist>`;
+}
+const catPorNombre = (n) => S.D.categorias.find((c) => c.nombre.toLowerCase() === String(n || '').trim().toLowerCase());
 /** Detalles ya usados en una categoría (los más frecuentes primero), para sugerir al escribir. */
 function detallesUsados(categoriaId, tipo) {
   const n = {};
@@ -766,7 +773,7 @@ function mMov(m) {
           <label class="f"><span>Nombre</span><input name="nc_nombre" value="${esc(v.nuevaCat.nombre)}" placeholder="Ej: Fotografía" data-autofocus></label>
           <label class="f"><span>Grupo</span><select name="nc_tipo">${Object.entries(TIPO_CAT).map(([k, l]) => `<option value="${k}"${v.nuevaCat.tipo === k ? ' selected' : ''}>${l.split(' (')[0]}</option>`).join('')}</select></label></div>
           <div class="actions" style="margin-top:10px"><span class="sp"></span><button type="button" class="btn sm" data-action="cancelarCatInline">Cancelar</button><button type="button" class="btn sm primary" data-action="crearCatInline">Crear categoría</button></div></div>`
-        : `<label class="f full"><span>Categoría</span><select name="categoria_id" required>${optCategorias(t, v.categoria_id, true)}</select></label>`}
+        : `<label class="f full"><span>Categoría <span class="mut" style="font-weight:400">· escribí para buscar</span></span><input name="categoria_txt" list="dl-cat" autocomplete="off" value="${esc(v.categoria_txt ?? ((categoria(+v.categoria_id) || {}).nombre || ''))}" placeholder="Ej: Producción"><input type="hidden" name="categoria_id" value="${esc(v.categoria_id)}">${dlCategorias(t)}</label>`}
       ${t === 'egreso' ? `<label class="f full"><span>Proveedor (opcional)</span><input name="proveedor" list="dl-prov" value="${esc(v.proveedor)}" placeholder="Ej: Ruth"><datalist id="dl-prov">${S.D.proveedores.filter((p) => p.activo).map((p) => `<option value="${esc(p.nombre)}">${esc(p.rubro)}</option>`).join('')}</datalist></label>` : ''}
       ${t === 'ingreso' ? `<label class="f"><span>Canal</span><select name="canal"><option value="">—</option>${CANALES.map((c) => `<option${v.canal === c ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
         <label class="f" style="justify-content:flex-end"><span class="check" style="height:40px"><input type="checkbox" name="facturado"${v.facturado ? ' checked' : ''}> Facturado</span></label>` : ''}
@@ -799,6 +806,12 @@ async function guardarMov(otro) {
   if (!v.cuenta_id) return err('Elegí la cuenta.');
   if (v.tipo === 'transferencia' && !v.cuenta_destino_id) return err('Elegí la cuenta destino.');
   if (v.nuevaCat) return err('Terminá de crear la categoría nueva (o cancelala).');
+  if (v.tipo !== 'transferencia') {
+    const c = catPorNombre(v.categoria_txt);
+    if (c) v.categoria_id = c.id;
+    else if (String(v.categoria_txt || '').trim()) return err('Esa categoría no existe. Elegila de la lista o creala con "+ Nueva categoría…".');
+    else v.categoria_id = '';
+  }
   if (v.tipo !== 'transferencia' && !v.categoria_id) return err('Elegí la categoría.');
   let proveedor_id = null;
   try {
@@ -931,14 +944,14 @@ const A = {
     try {
       const r = await api('catalogo', { method: 'POST', body: { tabla: 'categorias', item: { nombre: nc.nombre.trim(), tipo: nc.tipo, orden: 50, activa: true } } });
       await recargarDatos();
-      v.categoria_id = r.id; v.nuevaCat = null; S.modal.noFocus = true; renderModal(); toast('Categoría creada');
+      v.categoria_id = r.id; v.categoria_txt = nc.nombre.trim(); v.nuevaCat = null; S.modal.noFocus = true; renderModal(); toast('Categoría creada');
     } catch (e) { errEl.textContent = e.message; }
   },
   cancelarCatInline: () => { leerMovForm(); S.modal.v.nuevaCat = null; S.modal.noFocus = true; renderModal(); },
   movTipo: (el) => {
     leerMovForm(); const v = S.modal.v; const t = el.dataset.v; if (t === v.tipo) return;
     v.tipo = t; const c = categoria(+v.categoria_id);
-    if (c && ((t === 'ingreso') !== (c.tipo === 'ingreso'))) v.categoria_id = '';
+    if (c && ((t === 'ingreso') !== (c.tipo === 'ingreso'))) { v.categoria_id = ''; v.categoria_txt = ''; }
     S.modal.noFocus = true; renderModal();
   },
   borrarMov: async () => {
@@ -1055,9 +1068,10 @@ document.addEventListener('change', (e) => {
   if (el.dataset.filtro) { S.f[el.dataset.filtro] = el.value; render(); return; }
   if (el.dataset.actionChange === 'recTipo') { leerCatForm(); S.modal.noFocus = true; renderModal(); return; }
   if (el.name === 'cuenta_id' && S.modal && S.modal.kind === 'mov' && S.modal.v.tipo === 'transferencia') { leerMovForm(); S.modal.noFocus = true; renderModal(); }
-  if (el.name === 'categoria_id' && S.modal && S.modal.kind === 'mov') {
+  if (el.name === 'categoria_txt' && S.modal && S.modal.kind === 'mov') {
     leerMovForm(); const v = S.modal.v;
-    if (v.categoria_id === '__nueva') { v.categoria_id = ''; v.nuevaCat = { nombre: '', tipo: v.tipo === 'ingreso' ? 'ingreso' : 'variable' }; }
+    if (v.categoria_txt.startsWith('+ Nueva')) { v.categoria_id = ''; v.categoria_txt = ''; v.nuevaCat = { nombre: '', tipo: v.tipo === 'ingreso' ? 'ingreso' : 'variable' }; }
+    else { const c = catPorNombre(v.categoria_txt); v.categoria_id = c ? c.id : ''; if (c) v.categoria_txt = c.nombre; }
     S.modal.noFocus = true; renderModal();
     const f = $modal.querySelector(v.nuevaCat ? '[name=nc_nombre]' : '[name=detalle]'); if (f) f.focus();
   }
