@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { leerConfig, movimientos, actualizarMes, meses, leerMes, nuevoId } from '../lib/db.js';
+import { leerConfig, actualizarConfig, movimientos, actualizarMes, meses, leerMes, nuevoId } from '../lib/db.js';
 import { json, body, protegido, falla, esFecha } from '../lib/util.js';
 
 const CANALES = ['', 'Tiendanube', 'WhatsApp', 'Instagram', 'Local', 'Otro'];
@@ -119,11 +119,15 @@ export const DELETE = protegido(async (request, yo) => {
   const id = +new URL(request.url).searchParams.get('id') || 0;
   const found = await buscar(id);
   if (!found) throw falla('El movimiento ya no existe.', 404);
+  let ref = null;
   await actualizarMes(found.mes, (movs) => {
     const x = movs.find((m) => m.id === id && !m.borrado_en);
     if (!x) throw falla('El movimiento ya no existe.', 404);
+    ref = x.pedido_ref;
     x.borrado_en = new Date().toISOString(); x.borrado_por = yo.id; x.pedido_ref = null;
   });
+  // si era un pago de la app de pedidos, no se vuelve a cargar solo
+  if (ref) await actualizarConfig((c) => { c.ignorados ||= {}; c.ignorados[ref] = { por: yo.id, en: new Date().toISOString(), motivo: 'borrado' }; });
   return json({ ok: true });
 });
 

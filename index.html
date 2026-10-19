@@ -384,6 +384,7 @@ function render() {
     <nav class="tabs">
       ${esAdmin() ? tab('panel', 'Panel') : ''}${tab('movs', 'Movimientos')}${tab('cobros', 'Cobros', pend ? `<span class="badge">${pend}</span>` : '')}${tab('prov', 'Proveedores')}${tab('ajustes', esAdmin() ? 'Ajustes' : 'Mi usuario')}
     </nav>
+    <button class="btn sm" data-action="actualizar" title="Traer lo nuevo de Tiendanube y de la app de pedidos" style="background:transparent;color:#f3efe7;border-color:rgba(255,255,255,.25)"${S.actualizando ? ' disabled' : ''}>${icon('refresh', 15)} ${S.actualizando ? 'Actualizando…' : 'Actualizar'}</button>
     <div class="who"><span class="avatar">${esc(iniciales(S.D.yo.nombre))}</span>${esc(S.D.yo.nombre)}</div>
   </div></header>
   <main class="wrap">${(!esAdmin() && S.tab === 'panel' ? (S.tab = 'movs') : 0, '')}${({ panel: vPanel, movs: vMovs, cobros: vCobros, prov: vProv, ajustes: vAjustes })[S.tab]()}</main>`;
@@ -534,7 +535,7 @@ function movsFiltrados() {
     if (f.categoria && x.categoria_id !== +f.categoria) return false;
     if (f.tipoCat) { const c = categoria(x.categoria_id); if (x.tipo === 'transferencia' || !c || c.tipo !== f.tipoCat) return false; }
     if (f.proveedor && x.proveedor_id !== +f.proveedor) return false;
-    if (f.usuario && String(x.creado_por || ({ automatico: 'auto', tiendanube: 'tn' })[x.origen] || 'planilla') !== f.usuario) return false;
+    if (f.usuario && String(x.creado_por || ({ automatico: 'auto', tiendanube: 'tn', pedido: 'ped' })[x.origen] || 'planilla') !== f.usuario) return false;
     if (q) {
       const t = [x.detalle, x.canal, (proveedor(x.proveedor_id) || {}).nombre, (categoria(x.categoria_id) || {}).nombre, String(Math.round(x.monto))].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
@@ -549,7 +550,7 @@ function descMov(x) {
   const s = [c ? c.nombre : 'Sin categoría', p && x.detalle ? p.nombre : '', x.canal].filter(Boolean).join(' · ');
   return { t, s, cls: c ? c.tipo : 'revisar' };
 }
-const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : x.origen === 'tiendanube' ? 'Tiendanube' : 'Planilla');
+const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : x.origen === 'tiendanube' ? 'Tiendanube' : x.origen === 'pedido' ? 'App de pedidos' : 'Planilla');
 
 function vMovs() {
   const f = S.f;
@@ -578,7 +579,7 @@ function vMovs() {
       <select data-filtro="categoria" aria-label="Categoría">${opt(S.D.categorias, f.categoria, 'Todas las categorías')}</select>
       <select data-filtro="cuenta" aria-label="Cuenta">${opt(S.D.cuentas, f.cuenta, 'Todas las cuentas')}</select>
       <select data-filtro="proveedor" aria-label="Proveedor">${opt(S.D.proveedores, f.proveedor, 'Todos los proveedores')}</select>
-      <select data-filtro="usuario" aria-label="Cargado por"><option value="">Cargado por cualquiera</option>${S.D.usuarios.map((u) => `<option value="${u.id}"${f.usuario === String(u.id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}<option value="planilla"${f.usuario === 'planilla' ? ' selected' : ''}>Planilla (importado)</option><option value="auto"${f.usuario === 'auto' ? ' selected' : ''}>Débitos automáticos</option><option value="tn"${f.usuario === 'tn' ? ' selected' : ''}>Tiendanube (automático)</option></select>
+      <select data-filtro="usuario" aria-label="Cargado por"><option value="">Cargado por cualquiera</option>${S.D.usuarios.map((u) => `<option value="${u.id}"${f.usuario === String(u.id) ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}<option value="planilla"${f.usuario === 'planilla' ? ' selected' : ''}>Planilla (importado)</option><option value="auto"${f.usuario === 'auto' ? ' selected' : ''}>Débitos automáticos</option><option value="tn"${f.usuario === 'tn' ? ' selected' : ''}>Tiendanube (automático)</option><option value="ped"${f.usuario === 'ped' ? ' selected' : ''}>App de pedidos (automático)</option></select>
       ${hayFiltro ? `<button class="btn ghost" data-action="limpiarFiltros">${icon('x')} Limpiar filtros</button>` : ''}
     </div>
     ${html || `<div class="empty">${hayFiltro ? 'Ningún movimiento coincide con los filtros.' : 'No hay movimientos este mes.'}</div>`}
@@ -594,16 +595,17 @@ function vCobros() {
   const conSaldo = ped.pedidos.filter((p) => p.saldo > 0).sort((a, b) => a.fechaIngreso.localeCompare(b.fechaIngreso));
   const tot = conSaldo.reduce((a, p) => a + p.saldo, 0);
   const pend = ped.pendientes;
-  return `<div class="bar"><div><b style="font-size:18px">Cobros</b><div class="hint">Los pagos se cargan en la app de pedidos y acá se confirman en la caja.</div></div><div class="sp"></div>
-    <button class="btn" data-action="recargarPedidos"${S.pedCargando ? ' disabled' : ''}>${icon('refresh')} ${S.pedCargando ? 'Actualizando…' : 'Actualizar'}</button></div>
+  const pagosDelMes = ped.pedidos.flatMap((p) => p.pagos).filter((x) => mesDe(x.fecha || '') === mesActual());
+  const cobradoMes = pagosDelMes.reduce((a, x) => a + x.monto, 0), pagosMes = pagosDelMes.length;
+  return `<div class="bar"><div><b style="font-size:18px">Cobros</b><div class="hint">Los pagos que cargás en la app de pedidos entran solos a la caja (tocá Actualizar para traer los últimos).</div></div></div>
   ${ped.error ? `<div class="banner">${icon('alert')}<span>${esc(ped.error)}</span></div>` : ''}
   ${esAdmin() ? `<div class="kpis">
     <div class="kpi"><span>Saldo a cobrar</span><b>${$$(tot)}</b><small>${conSaldo.length} pedidos</small></div>
-    <div class="kpi"><span>Pagos para confirmar</span><b>${pend.length}</b><small>${$$(pend.reduce((a, x) => a + x.monto, 0))}</small></div>
+    <div class="kpi"><span>Cobrado de pedidos en ${MESES[+mesActual().slice(5) - 1]}</span><b>${$$(cobradoMes)}</b><small>${pagosMes} ${pagosMes === 1 ? 'pago' : 'pagos'}</small></div>
     <div class="kpi"><span>Saldo con más de 60 días</span><b>${$$(conSaldo.filter((p) => diasDesde(p.fechaIngreso) > 60).reduce((a, p) => a + p.saldo, 0))}</b><small>&nbsp;</small></div>
   </div>` : ''}
-  <section class="card">
-    <h2>Pagos de pedidos para confirmar <small>desde ${fechaCorta(S.D.inicio)}</small></h2>
+  ${pend.length ? `<section class="card">
+    <h2>Pagos de pedidos sin registrar <small>marcados como "no va a la caja" o pendientes</small></h2>
     ${pend.length ? pend.map((x) => {
       const dup = posiblesDuplicados(x)[0];
       return `<div class="li" style="flex-wrap:wrap"><span class="grow">${esc(x.cliente)} ${x.codigoCliente ? `<span class="mut">· ${esc(x.codigoCliente)}</span>` : ''}<small>${fechaCorta(x.fecha)} · ${esc(x.medio || 'Sin medio')}${x.nota ? ' · ' + esc(x.nota) : ''}</small>
@@ -614,7 +616,7 @@ function vCobros() {
           <button class="btn sm${dup ? '' : ' primary'}" data-action="registrarPago" data-ref="${esc(x.ref)}">${icon('check', 15)} Registrar ingreso</button>
           <button class="btn sm ghost" data-action="ignorarPago" data-ref="${esc(x.ref)}">No va a la caja</button></span></div>`;
     }).join('') : '<p class="hint">Todo al día: no hay pagos de pedidos sin registrar.</p>'}
-  </section>
+  </section>` : ''}
   <section class="card">
     <h2>Pedidos con saldo pendiente</h2>
     ${conSaldo.length ? `<div class="scroll"><table class="tbl"><tr><th>Cliente</th><th>Productos</th><th>Estado</th><th class="r">Total</th><th class="r">Pagado</th><th class="r">Saldo</th><th class="r">Días</th></tr>
@@ -929,6 +931,17 @@ const A = {
     const t = S.D.tiendanube; const pn = cuenta(t.cuenta_pn_id), dest = cuenta(t.cuenta_id);
     abrirModal({ kind: 'mov', v: nuevoMov('transferencia', { cuenta_id: pn.id, cuenta_destino_id: dest.id, monto: String(Math.round(pn.saldo * 100) / 100).replace('.', ','), detalle: `Transferencia ${pn.nombre} a ${dest.nombre}` }) });
   },
+  actualizar: async () => {
+    if (S.actualizando) return;
+    S.actualizando = true; render();
+    try {
+      const r = await api('actualizar', { method: 'POST', body: {} });
+      await refrescar(); if (S.D.pedidosConectado) await cargarPedidos(true);
+      const tn = r.tiendanube ? r.tiendanube.creadas : 0, pe = r.pedidos ? r.pedidos.creados + r.pedidos.vinculados : 0;
+      toast(r.errores.length ? r.errores[0] : tn || pe ? [tn ? `${tn} ${tn === 1 ? 'venta' : 'ventas'} de Tiendanube` : '', pe ? `${pe} ${pe === 1 ? 'pago' : 'pagos'} de pedidos` : ''].filter(Boolean).join(' y ') + ' nuevos' : 'Todo al día');
+    } catch (e) { toast(e.message); }
+    S.actualizando = false; render();
+  },
   tnSync: async (el) => {
     el.disabled = true; el.textContent = 'Revisando…';
     try { const r = await api('tiendanube', { method: 'POST', body: { accion: 'sincronizar' } }); toast(r.creadas ? `${r.creadas} ventas nuevas cargadas` : 'No había ventas nuevas'); await refrescar(); }
@@ -1088,6 +1101,12 @@ document.addEventListener('input', (e) => {
   }
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.modal) cerrarModal(); });
+let ultimaVista = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || S.view !== 'app' || S.modal) return;
+  if (Date.now() - ultimaVista > 60_000) refrescar().catch(() => {});
+  ultimaVista = Date.now();
+});
 let rzT; window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { if (S.view === 'app' && S.tab === 'panel') montarGrafico(); }, 150); });
 iniciar();
 </script>

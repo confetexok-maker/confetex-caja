@@ -2,10 +2,12 @@ import { leerConfig, movimientos, aplicarAutomaticos, INICIO } from '../lib/db.j
 import { json, protegido } from '../lib/util.js';
 import { pedidosToken } from '../lib/pedidos.js';
 import { tnConfigurada, importarOctubreTN } from '../lib/tiendanube.js';
+import { importarPagosPedidos } from '../lib/pagos-pedidos.js';
 
 export const GET = protegido(async (request, yo) => {
   await aplicarAutomaticos().catch((e) => console.error('automaticos', e));
   await importarOctubreTN().catch((e) => console.error('tn octubre', e));
+  await importarPagosPedidos().catch((e) => console.error('pagos pedidos', e));
   const [c, movs] = await Promise.all([leerConfig(), movimientos()]);
   const saldo = {};
   for (const m of movs) {
