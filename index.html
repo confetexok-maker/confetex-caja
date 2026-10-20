@@ -535,7 +535,7 @@ function movsFiltrados() {
     if (f.categoria && x.categoria_id !== +f.categoria) return false;
     if (f.tipoCat) { const c = categoria(x.categoria_id); if (x.tipo === 'transferencia' || !c || c.tipo !== f.tipoCat) return false; }
     if (f.proveedor && x.proveedor_id !== +f.proveedor) return false;
-    if (f.usuario && String(x.creado_por || ({ automatico: 'auto', tiendanube: 'tn', pedido: 'ped' })[x.origen] || 'planilla') !== f.usuario) return false;
+    if (f.usuario && String(x.creado_por || ({ automatico: 'auto', tiendanube: 'tn', pedido: 'ped', materiales: 'ped' })[x.origen] || 'planilla') !== f.usuario) return false;
     if (q) {
       const t = [x.detalle, x.canal, (proveedor(x.proveedor_id) || {}).nombre, (categoria(x.categoria_id) || {}).nombre, String(Math.round(x.monto))].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
@@ -550,7 +550,7 @@ function descMov(x) {
   const s = [c ? c.nombre : 'Sin categoría', p && x.detalle ? p.nombre : '', x.canal].filter(Boolean).join(' · ');
   return { t, s, cls: c ? c.tipo : 'revisar' };
 }
-const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : x.origen === 'tiendanube' ? 'Tiendanube' : x.origen === 'pedido' ? 'App de pedidos' : 'Planilla');
+const quien = (x) => (x.creado_por ? (usuario(x.creado_por) || {}).nombre || '—' : x.origen === 'automatico' ? 'Automático' : x.origen === 'tiendanube' ? 'Tiendanube' : x.origen === 'pedido' ? 'App de pedidos' : x.origen === 'materiales' ? 'App de pedidos (Materiales)' : 'Planilla');
 
 function vMovs() {
   const f = S.f;
@@ -762,7 +762,7 @@ function mMov(m) {
   const seg = ['ingreso', 'egreso', 'transferencia'].map((k) => `<button type="button" class="${t === k ? 'on' : ''}" data-action="movTipo" data-v="${k}"${editando && v.grupo ? ' disabled' : ''}>${k[0].toUpperCase() + k.slice(1)}</button>`).join('');
   const rec = v.recurrente_id ? S.D.recurrentes.find((r) => r.id === +v.recurrente_id) : null;
   const titulo = editando ? 'Editar movimiento' : v.pedidoRef ? 'Registrar pago de pedido' : rec ? `Pagar ${rec.nombre}` : 'Nuevo movimiento';
-  const meta = editando ? `<div class="meta">Cargado por ${esc(quien(v))} el ${new Date(v.creado_en).toLocaleString('es-AR')}${v.editado_por ? ` · editado por ${esc((usuario(v.editado_por) || {}).nombre)} el ${new Date(v.editado_en).toLocaleString('es-AR')}` : ''}${v.origen === 'planilla' ? ' · importado de la planilla' : ''}${v.origen === 'automatico' ? ' · débito automático' : ''}${v.origen === 'tiendanube' ? ' · cargado solo desde Tiendanube' : ''}${v.grupo ? ' · forma parte de una carga con varias líneas' : ''}${v.pedido_ref ? ' · vinculado a un pago de pedido' : ''}</div>` : '';
+  const meta = editando ? `<div class="meta">Cargado por ${esc(quien(v))} el ${new Date(v.creado_en).toLocaleString('es-AR')}${v.editado_por ? ` · editado por ${esc((usuario(v.editado_por) || {}).nombre)} el ${new Date(v.editado_en).toLocaleString('es-AR')}` : ''}${v.origen === 'planilla' ? ' · importado de la planilla' : ''}${v.origen === 'automatico' ? ' · débito automático' : ''}${v.origen === 'tiendanube' ? ' · cargado solo desde Tiendanube' : ''}${v.grupo ? ' · forma parte de una carga con varias líneas' : ''}${v.pedido_ref ? ' · vinculado a un pago de pedido' : ''}${v.materiales_ref ? ' · vinculado a una compra de tela (Materiales)' : ''}</div>` : '';
   return `<form id="movForm" autocomplete="off">
     <h3>${titulo}<span class="sp"></span><button type="button" class="btn ghost icon sm" data-action="cerrar" aria-label="Cerrar">${icon('x')}</button></h3>
     <div class="seg">${seg}</div>
