@@ -12,11 +12,11 @@ directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
-# Base de datos compartida con la app de caja. Reemplazar database_id por el de tu D1.
+# Base de datos compartida con la app de caja.
 [[d1_databases]]
 binding = "DB"
 database_name = "confetex"
-database_id = "REEMPLAZAR-POR-ID-DE-D1"
+database_id = "9dfc2568-15ae-4552-86a4-48dc614bd75b"
 
 # Revisión diaria de Tiendanube (07:00 Argentina = 10:00 UTC)
 [triggers]
