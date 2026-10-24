@@ -38,14 +38,14 @@ async function run(modo){
         const s=await fetch('/api/importar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items:j.items})});
         const k=await s.json().catch(()=>({}));
         if(!s.ok) throw new Error(k.error||('Error al guardar '+s.status));
-        pedidos+=k.pedidos||0; fotos+=k.fotos||0; archivos+=k.archivos||0;
+        pedidos+=k.movimientos||0; fotos+=k.fotos||0; archivos+=k.archivos||0;
       }
       log(n+' de '+j.total+' archivos…');
       if(j.siguiente==null) break;
       desde=j.siguiente;
     }
     if(modo==='dl'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(todo)],{type:'application/json'}));a.download='copia-datos.json';a.click();log('Copia descargada ('+n+' archivos).');}
-    else log('LISTO. Archivos: '+archivos+' · Pedidos: '+pedidos+' · Fotos: '+fotos);
+    else log('LISTO. Archivos: '+archivos+' · Movimientos: '+pedidos);
   }catch(e){log('ERROR: '+e.message)}
   $('go').disabled=$('dl').disabled=false;
 }
