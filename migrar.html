@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mudanza de datos</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;background:#EFEBE3;color:#141416;margin:0;padding:24px}
+main{max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:22px;border:1px solid #0001}
+h1{font-size:20px;margin:0 0 6px}label{display:block;margin:14px 0 4px;font-weight:600;font-size:13px}
+input,select{width:100%;padding:10px;border:1px solid #0003;border-radius:8px;font:inherit;box-sizing:border-box}
+button{margin-top:16px;padding:11px 16px;border:0;border-radius:9px;background:#5C2A34;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:#fff;color:#5C2A34;border:1px solid #5C2A34;margin-left:8px}button:disabled{opacity:.5}
+pre{background:#f7f5f0;border-radius:8px;padding:10px;font-size:12.5px;white-space:pre-wrap;max-height:260px;overflow:auto}
+small{color:#7a766d}
+</style></head><body><main>
+<h1>Mudanza de datos desde Vercel</h1>
+<small>Copia todo lo que hay en la app anterior a esta. Se usa una sola vez. Tenés que estar logueado acá en la caja.</small>
+<label>Dirección de la app anterior</label>
+<input id="url" value="https://confetex-caja.vercel.app">
+<label>Usuario</label><select id="usr"><option value="1">Nicolas</option><option value="2">Noely</option></select>
+<label>PIN de la app anterior</label>
+<input id="pin" type="password" inputmode="numeric" autocomplete="off">
+<button id="go">Copiar los datos acá</button><button id="dl" class="sec">Solo descargar una copia (.json)</button>
+<pre id="log">Listo para empezar.</pre>
+<script>
+const $=(i)=>document.getElementById(i), log=(t)=>{$('log').textContent+='\n'+t};
+async function run(modo){
+  $('go').disabled=$('dl').disabled=true; $('log').textContent='Empezando…';
+  try{
+    const base=$('url').value.trim().replace(/\/+$/,'');
+    const todo=[]; let n=0, pedidos=0, fotos=0, archivos=0, desde=0;
+    for(;;){
+      const r=await fetch(base+'/api/exportar',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({pin:$('pin').value,desde,usuarioId:$("usr").value,})});
+      const j=await r.json().catch(()=>({error:'Respuesta inválida'}));
+      if(!r.ok) throw new Error(j.error||('Error '+r.status));
+      n+=j.items.length;
+      if(modo==='dl') todo.push(...j.items);
+      else{
+        const s=await fetch('/api/importar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items:j.items})});
+        const k=await s.json().catch(()=>({}));
+        if(!s.ok) throw new Error(k.error||('Error al guardar '+s.status));
+        pedidos+=k.pedidos||0; fotos+=k.fotos||0; archivos+=k.archivos||0;
+      }
+      log(n+' de '+j.total+' archivos…');
+      if(j.siguiente==null) break;
+      desde=j.siguiente;
+    }
+    if(modo==='dl'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(todo)],{type:'application/json'}));a.download='copia-datos.json';a.click();log('Copia descargada ('+n+' archivos).');}
+    else log('LISTO. Archivos: '+archivos+' · Pedidos: '+pedidos+' · Fotos: '+fotos);
+  }catch(e){log('ERROR: '+e.message)}
+  $('go').disabled=$('dl').disabled=false;
+}
+$('go').onclick=()=>run('imp'); $('dl').onclick=()=>run('dl');
+</script></main></body></html>

@@ -1,0 +1,32 @@
+name = "confetex-caja"
+main = "worker.js"
+compatibility_date = "2025-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Páginas estáticas (se copian a /public al desplegar)
+[build]
+command = "node scripts/build-public.mjs"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# Base de datos compartida con la app de caja. Reemplazar database_id por el de tu D1.
+[[d1_databases]]
+binding = "DB"
+database_name = "confetex"
+database_id = "REEMPLAZAR-POR-ID-DE-D1"
+
+# Revisión diaria de Tiendanube (07:00 Argentina = 10:00 UTC)
+[triggers]
+crons = ["0 10 * * *"]
+
+# El código usa la API de @vercel/blob: en Cloudflare se reemplaza por lib/blob-compat.js (guarda en D1)
+[alias]
+"@vercel/blob" = "./lib/blob-compat.js"
+
+# Valores de relleno: en Cloudflare el almacenamiento es la base D1 (no hace falta ningún token)
+[vars]
+BLOB_READ_WRITE_TOKEN = "d1"
+PEDIDOS_READ_WRITE_TOKEN = "d1"

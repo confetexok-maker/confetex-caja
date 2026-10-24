@@ -1,3 +1,0 @@
-{
-  "crons": [{ "path": "/api/tiendanube-cron", "schedule": "0 10 * * *" }]
-}

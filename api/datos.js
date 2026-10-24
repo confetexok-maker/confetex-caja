@@ -1,22 +1,17 @@
-import { leerConfig, movimientos, aplicarAutomaticos, INICIO } from '../lib/db.js';
+import { leerConfig, saldosPorCuenta, aplicarAutomaticos, siCambio, etagArchivo, hoyAR, INICIO } from '../lib/db.js';
 import { json, protegido } from '../lib/util.js';
-import { pedidosToken } from '../lib/pedidos.js';
+import { pedidosToken, versionPedidos } from '../lib/pedidos.js';
 import { tnConfigurada, importarOctubreTN } from '../lib/tiendanube.js';
 import { importarPagosPedidos } from '../lib/pagos-pedidos.js';
 import { importarComprasMateriales } from '../lib/compras-materiales.js';
 
 export const GET = protegido(async (request, yo) => {
-  await aplicarAutomaticos().catch((e) => console.error('automaticos', e));
+  // Los débitos automáticos se revisan una vez por día; los pagos de pedidos y las compras de tela, solo cuando cambiaron.
+  await siCambio('auto', hoyAR(), () => aplicarAutomaticos()).catch((e) => console.error('automaticos', e));
   await importarOctubreTN().catch((e) => console.error('tn octubre', e));
-  await importarPagosPedidos().catch((e) => console.error('pagos pedidos', e));
-  await importarComprasMateriales().catch((e) => console.error('compras materiales', e));
-  const [c, movs] = await Promise.all([leerConfig(), movimientos()]);
-  const saldo = {};
-  for (const m of movs) {
-    if (m.tipo === 'ingreso') saldo[m.cuenta_id] = (saldo[m.cuenta_id] || 0) + m.monto;
-    else saldo[m.cuenta_id] = (saldo[m.cuenta_id] || 0) - m.monto;
-    if (m.tipo === 'transferencia') saldo[m.cuenta_destino_id] = (saldo[m.cuenta_destino_id] || 0) + m.monto;
-  }
+  await siCambio('pagos', await versionPedidos(), () => importarPagosPedidos()).catch((e) => console.error('pagos pedidos', e));
+  await siCambio('compras', await etagArchivo('materiales/datos.json'), () => importarComprasMateriales()).catch((e) => console.error('compras materiales', e));
+  const [c, saldo] = await Promise.all([leerConfig(), saldosPorCuenta()]);
   const r2 = (n) => Math.round((n || 0) * 100) / 100;
   const admin = yo.rol === 'admin';
   const orden = (a, b) => (a.orden - b.orden) || (a.id - b.id);

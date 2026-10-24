@@ -1,3 +1,17 @@
+# ConfeTex · Caja (versión Cloudflare)
+
+**Esta versión corre en Cloudflare (plan gratis), no en Vercel.**
+- Servidor: Cloudflare Worker (`worker.js`) que reparte `/api/*` a las funciones de `api/`; las páginas se sirven desde `public/` (se arma con `scripts/build-public.mjs`).
+- Datos: base D1 `confetex`, **compartida entre pedidos y caja** (binding `DB`). Pedidos y movimientos de caja son una fila cada uno; el resto son archivos JSON en las tablas `kv`/`chunks` (`lib/blob-compat.js` reemplaza a `@vercel/blob`).
+- Límite a respetar: el plan gratis permite **10 ms de procesamiento por pedido** y 100.000 pedidos/día. Por eso no se leen archivos grandes en el servidor: las listas se arman con texto directo de la base y los saldos se calculan con SQL.
+- Tarea programada: revisión diaria de Tiendanube (10:00 UTC) (`[triggers]` en `wrangler.toml`).
+- Variables (en Cloudflare → Settings → Variables and Secrets): ver `wrangler.toml` y la sección de variables más abajo.
+- Despliegue: cada push a la rama configurada se publica solo (Workers Builds).
+- `migrar.html` + `api/importar.js` sirvieron para la mudanza desde Vercel (se pueden borrar).
+
+---
+(Documentación de la versión anterior en Vercel)
+
 # ConfeTex · Caja
 
 Caja diaria de ConfeTex: ingresos, egresos y transferencias por cuenta, proveedores, gastos fijos con vencimientos, cobros pendientes de pedidos y reporte mensual (ingresos → costos variables → margen → gastos fijos → resultado → retiros → lo que queda).

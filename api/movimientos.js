@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { leerConfig, actualizarConfig, movimientos, actualizarMes, meses, leerMes, nuevoId } from '../lib/db.js';
+import { leerConfig, actualizarConfig, movimientos, actualizarMes, nuevoId, buscarMov, consultarCols } from '../lib/db.js';
 import { json, body, protegido, falla, esFecha } from '../lib/util.js';
 
 const CANALES = ['', 'Tiendanube', 'WhatsApp', 'Instagram', 'Local', 'Otro'];
@@ -38,25 +38,21 @@ function limpiar(x, cfg) {
 
 const publico = (m) => { const { borrado_por, borrado_en, origen_ref, ...r } = m; return r; };
 
-async function buscar(id) {
-  for (const mes of (await meses()).reverse()) {
-    const x = (await leerMes(mes)).find((m) => m.id === id && !m.borrado_en);
-    if (x) return { mes, x };
-  }
-  return null;
-}
+const buscar = (id) => buscarMov(id);
 
 async function refUsada(ref) {
-  return (await movimientos()).some((m) => m.pedido_ref === ref);
+  return (await consultarCols('1 AS x', 'pedido_ref=? AND borrado=0', [ref])).length > 0;
 }
 
 export const GET = protegido(async (request) => {
   const u = new URL(request.url);
   const desde = u.searchParams.get('desde'), hasta = u.searchParams.get('hasta');
   if (!esFecha(desde) || !esFecha(hasta)) throw falla('Rango de fechas inválido.');
-  const rows = (await movimientos(desde, hasta)).map(publico)
-    .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado_en.localeCompare(a.creado_en) || b.id - a.id);
-  return json({ movimientos: rows });
+  // La base ordena y quita los campos internos; el servidor solo pega los textos (sin leer cada movimiento).
+  const filas = await consultarCols(
+    "json_remove(json, '$.borrado_por', '$.borrado_en', '$.origen_ref') AS j",
+    "borrado=0 AND fecha>=? AND fecha<=? ORDER BY fecha DESC, json_extract(json,'$.creado_en') DESC, id DESC", [desde, hasta]);
+  return new Response(`{"movimientos":[${filas.map((r) => r.j).join(',')}]}`, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 });
 
 // { movimientos: [..] } (1 a 3 líneas que se guardan juntas)  ·  { pedido: { ref, id } } opcional

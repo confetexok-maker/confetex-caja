@@ -1,4 +1,4 @@
-import { leerConfig, actualizarConfig, movimientos, INICIO } from '../lib/db.js';
+import { leerConfig, actualizarConfig, pagosEnCaja, INICIO } from '../lib/db.js';
 import { json, body, protegido, falla } from '../lib/util.js';
 import { listarPedidos, limpiarCache } from '../lib/pedidos.js';
 
@@ -7,8 +7,7 @@ export const GET = protegido(async (request) => {
   const pedidos = await listarPedidos();
   if (!pedidos) return json({ conectado: false, pedidos: [], pendientes: [] });
 
-  const [movs, cfg] = await Promise.all([movimientos(), leerConfig()]);
-  const enCaja = Object.fromEntries(movs.filter((m) => m.pedido_ref).map((m) => [m.pedido_ref, m.id]));
+  const [enCaja, cfg] = await Promise.all([pagosEnCaja(), leerConfig()]);
   const ign = cfg.ignorados || {};
 
   const pendientes = [];
