@@ -332,12 +332,11 @@ function resumen(m) {
   t.porCat = porCat; t.porCanal = porCanal;
   return t;
 }
+const sinAcentos = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 function estadoVencimientos(m) {
   const lista = S.D.recurrentes.filter((r) => r.activo);
   const movs = movsMes(m);
   const hoyS = hoy();
-  const usoCat = {};
-  for (const r of lista) if (r.categoria_id && !r.proveedor_id) usoCat[r.categoria_id] = (usoCat[r.categoria_id] || 0) + 1;
   const tomados = new Set(movs.filter((x) => x.recurrente_id).map((x) => x.id));
   // Un vencimiento se da por pagado si hay un movimiento marcado con él o uno que claramente le corresponde
   const corresponde = (r, x) => {
@@ -346,7 +345,9 @@ function estadoVencimientos(m) {
     if (r.tipo === 'transferencia') return x.tipo === 'transferencia' && x.cuenta_destino_id === r.cuenta_destino_id;
     if (x.tipo !== 'egreso' || x.categoria_id !== r.categoria_id) return false;
     if (r.proveedor_id) return x.proveedor_id === r.proveedor_id;
-    return usoCat[r.categoria_id] === 1 && !tomados.has(x.id);
+    // Sin proveedor, la categoría sola no alcanza (varios impuestos comparten categoría): el detalle tiene que nombrar el vencimiento.
+    const nr = sinAcentos(r.nombre), nd = sinAcentos(x.detalle);
+    return Boolean(nr) && nd.includes(nr) && !tomados.has(x.id);
   };
   return lista.map((r) => {
     // los marcados con el vencimiento cuentan todos; si se reconoce por categoría/proveedor, solo el primero
@@ -780,6 +781,7 @@ function mMov(m) {
       ${t === 'ingreso' ? `<label class="f"><span>Canal</span><select name="canal"><option value="">—</option>${CANALES.map((c) => `<option${v.canal === c ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
         <label class="f" style="justify-content:flex-end"><span class="check" style="height:40px"><input type="checkbox" name="facturado"${v.facturado ? ' checked' : ''}> Facturado</span></label>` : ''}
       <label class="f full"><span>Detalle <span class="mut" style="font-weight:400">· elegí uno usado o escribí uno nuevo</span></span><input name="detalle" list="dl-det" value="${esc(v.detalle)}" placeholder="${t === 'ingreso' ? 'Ej: Seña Grupo Sur' : t === 'egreso' ? 'Ej: Costura 50 remeras' : 'Ej: Pago resumen Visa'}"><datalist id="dl-det">${detallesUsados(v.categoria_id, t).map((d) => `<option value="${esc(d)}">`).join('')}</datalist></label>
+      ${t !== 'ingreso' ? `<label class="f full"><span>¿Es un gasto fijo? <span class="mut" style="font-weight:400">· lo vincula a su vencimiento</span></span><select name="recurrente_id"><option value="">No es un gasto fijo</option>${S.D.recurrentes.filter((r) => r.tipo === t && (r.activo || r.id === +v.recurrente_id)).sort((a, b) => a.dia - b.dia).map((r) => `<option value="${r.id}"${r.id === +v.recurrente_id ? ' selected' : ''}>${esc(r.nombre)} · día ${r.dia}</option>`).join('')}</select></label>` : ''}
     </div>
     ${t === 'ingreso' && !editando ? `<div class="extra" style="margin-top:12px"><p>Opcional: en la misma carga, el envío que pagó el cliente y la comisión de Mercado Pago.</p><div class="fgrid">
       <label class="f"><span>Envío cobrado ($)</span><input name="envio" inputmode="decimal" value="${esc(v.envio)}" placeholder="0"></label>
@@ -823,7 +825,7 @@ async function guardarMov(otro) {
       if (p) proveedor_id = p.id;
       else { const r = await api('catalogo', { method: 'POST', body: { tabla: 'proveedores', item: { nombre: nom, rubro: '', activo: true } } }); proveedor_id = r.id; }
     }
-    const base = { tipo: v.tipo, fecha: v.fecha, monto, cuenta_id: +v.cuenta_id, cuenta_destino_id: +v.cuenta_destino_id || null, categoria_id: +v.categoria_id || null, proveedor_id, canal: v.canal || '', detalle: v.detalle || '', facturado: Boolean(v.facturado), recurrente_id: +v.recurrente_id || null };
+    const base = { tipo: v.tipo, fecha: v.fecha, monto, cuenta_id: +v.cuenta_id, cuenta_destino_id: +v.cuenta_destino_id || null, categoria_id: +v.categoria_id || null, proveedor_id, canal: v.canal || '', detalle: v.detalle || '', facturado: Boolean(v.facturado), recurrente_id: v.tipo === 'ingreso' ? null : (+v.recurrente_id || null) };
     if (v.id) {
       await api('movimientos', { method: 'PUT', body: { id: v.id, ...base } });
       toast('Movimiento actualizado');
