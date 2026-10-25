@@ -2,6 +2,8 @@ name = "confetex-caja"
 main = "worker.js"
 compatibility_date = "2025-10-01"
 compatibility_flags = ["nodejs_compat"]
+# No borrar las variables cargadas desde el panel de Cloudflare al desplegar
+keep_vars = true
 
 # Páginas estáticas (se copian a /public al desplegar)
 [build]
